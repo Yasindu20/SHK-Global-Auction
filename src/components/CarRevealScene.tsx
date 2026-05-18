@@ -18,6 +18,14 @@ interface SceneState {
 export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SceneState | null>(null);
+  // ✅ KEY FIX: keep a live ref to scrollProgress so the rAF closure always
+  // reads the latest value instead of the stale one captured at mount time.
+  const scrollProgressRef = useRef(scrollProgress);
+
+  // Sync the ref on every render (cheap, no re-render triggered)
+  useEffect(() => {
+    scrollProgressRef.current = scrollProgress;
+  }, [scrollProgress]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -99,7 +107,7 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
         map: texture,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.95,
+        opacity: 0,          // ✅ start at 0; let the distance logic reveal them
         roughness: 0.6,
         metalness: 0.1,
       });
@@ -174,35 +182,32 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
 
     stateRef.current = state;
 
-    let lastProgress = -1;
-
+    // ✅ FIX: read from the ref inside the loop — always fresh, no stale closure
     const animate = () => {
-      const rafId = requestAnimationFrame(animate);
-      state.rafId = rafId;
+      state.rafId = requestAnimationFrame(animate);
 
-      // Only update if progress changed
-      if (Math.abs(scrollProgress - lastProgress) > 0.0001 || lastProgress === -1) {
-        lastProgress = scrollProgress;
+      const currentProgress = scrollProgressRef.current;
+      const t = Math.min(Math.max(currentProgress, 0), 0.999);
+      const tLook = Math.min(t + 0.02, 0.999);
 
-        const t = Math.min(scrollProgress, 0.999);
-        const point = state.curve.getPointAt(t);
-        const lookAtPoint = state.curve.getPointAt(Math.min(t + 0.02, 0.999));
+      const point = state.curve.getPointAt(t);
+      const lookAtPoint = state.curve.getPointAt(tLook);
 
-        state.camera.position.lerp(point, 0.12);
-        state.camera.lookAt(lookAtPoint);
+      state.camera.position.lerp(point, 0.12);
+      state.camera.lookAt(lookAtPoint);
 
-        // Particle drift
-        state.particles.rotation.y += 0.0003;
-        state.particles.rotation.x += 0.0001;
+      // Particle drift
+      state.particles.rotation.y += 0.0003;
+      state.particles.rotation.x += 0.0001;
 
-        // Distance-based plane fade
-        state.planes.forEach((plane: THREE.Mesh) => {
-          const dist = state.camera.position.distanceTo(plane.position);
-          const mat = plane.material as THREE.MeshStandardMaterial;
-          const target = dist < 8 ? Math.max(0, 1 - dist / 8) * 0.95 : 0;
-          mat.opacity += (target - mat.opacity) * 0.05;
-        });
-      }
+      // Distance-based plane fade
+      state.planes.forEach((plane: THREE.Mesh) => {
+        const dist = state.camera.position.distanceTo(plane.position);
+        const mat = plane.material as THREE.MeshStandardMaterial;
+        // Visible within 6 units (tighter than original 8 so images show sooner)
+        const target = dist < 6 ? Math.max(0, 1 - dist / 6) * 0.95 : 0;
+        mat.opacity += (target - mat.opacity) * 0.06;
+      });
 
       state.renderer.render(state.scene, state.camera);
     };
@@ -232,11 +237,7 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
         mount.removeChild(renderer.domElement);
       }
     };
-  }, []);
-
-  useEffect(() => {
-    // scrollProgress is read inside the rAF loop via closure
-  }, [scrollProgress]);
+  }, []); // ← intentionally empty: Three.js scene mounts once
 
   return (
     <div
