@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 30 20% 94%;
+    --card: 0 0% 8%;
+    --card-foreground: 30 20% 94%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 30 20% 94%;
+    --primary: 39 56% 58%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 11%;
+    --secondary-foreground: 30 20% 94%;
+    --muted: 0 0% 11%;
+    --muted-foreground: 28 8% 50%;
+    --accent: 0 0% 11%;
+    --accent-foreground: 30 20% 94%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 30 20% 94% / 0.08;
+    --input: 30 20% 94% / 0.08;
+    --ring: 39 56% 58%;
+    --radius: 0.625rem;
+
+    --bg: #0A0A0A;
+    --surface: #141414;
+    --surface-light: #1C1C1C;
+    --amber: #D4A853;
+    --amber-dim: rgba(212, 168, 83, 0.15);
+    --text-primary: #F5F0EB;
+    --text-secondary: #8A8279;
+    --border-subtle: rgba(245, 240, 235, 0.08);
+    --border-strong: rgba(245, 240, 235, 0.15);
+    --success: #4ADE80;
+    --alert: #EF4444;
+    --marquee-bg: #0F0F0F;
+  }
+
+  * {
+    @apply border-[rgba(245,240,235,0.08)];
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+@layer components {
+  .text-display {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: clamp(3rem, 6vw, 5.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+
+  .text-h2 {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  .text-h3 {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.25rem, 2vw, 1.5rem);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  .text-h4 {
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  .text-label {
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .text-price {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.25rem, 2vw, 1.5rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .container-main {
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: clamp(1.5rem, 5vw, 4rem);
+    padding-right: clamp(1.5rem, 5vw, 4rem);
+  }
+
+  .section-padding {
+    padding-top: clamp(4rem, 8vh, 7rem);
+    padding-bottom: clamp(4rem, 8vh, 7rem);
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

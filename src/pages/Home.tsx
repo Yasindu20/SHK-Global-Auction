@@ -1,0 +1,23 @@
+import Hero from '../sections/Hero';
+import TrustBar from '../sections/TrustBar';
+import MarqueeDestinations from '../sections/MarqueeDestinations';
+import VehicleGrid from '../sections/VehicleGrid';
+import HowItWorks from '../sections/HowItWorks';
+import DestinationShowcase from '../sections/DestinationShowcase';
+import CTABanner from '../sections/CTABanner';
+import Footer from '../sections/Footer';
+
+export default function Home() {
+  return (
+    <main>
+      <Hero />
+      <TrustBar />
+      <MarqueeDestinations />
+      <VehicleGrid />
+      <HowItWorks />
+      <DestinationShowcase />
+      <CTABanner />
+      <Footer />
+    </main>
+  );
+}
