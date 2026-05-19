@@ -78,35 +78,50 @@ app.post('/api/crawl-batch', async (req, res) => {
   
   if (supplier === 'STC Japan') {
     const parser = new STCJapanParser();
-    const allResults = [];
+    let addedCount = 0;
     
-    try {
-      for (let p = 1; p <= pages; p++) {
-        const listUrl = `https://stcjapan.net/search.php?make=&model=&fuel=&transmission=&category=&color=&from_year=&to_year=&page=${p}&searchy=Search+Now%21`;
-        const links = await parser.getListingLinks(listUrl);
-        
-        for (const link of links) {
-          const data = await parser.scrape(link);
-          if (data) {
-            try {
-              const newListing = new Listing({ ...data, status: 'approved' });
-              await newListing.save();
-              allResults.push(newListing);
-            } catch (error: any) {
-              if (error.code !== 11000) {
-                console.error('Failed to save listing:', error);
+    // Run scraping in background so request doesn't timeout
+    (async () => {
+      try {
+        for (let p = 1; p <= pages; p++) {
+          console.log(`Scraping page ${p}...`);
+          const listUrl = `https://stcjapan.net/search.php?make=&model=&fuel=&transmission=&category=&color=&from_year=&to_year=&page=${p}&searchy=Search+Now%21`;
+          const links = await parser.getListingLinks(listUrl);
+          console.log(`Found ${links.length} links on page ${p}`);
+          
+          for (const link of links) {
+            // Add a small delay to be polite and avoid blocking
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const data = await parser.scrape(link);
+            if (data) {
+              try {
+                // Ensure we have at least basic data before saving
+                if (data.stockId && data.make) {
+                  const newListing = new Listing({ ...data, status: 'approved' });
+                  await newListing.save();
+                  addedCount++;
+                  console.log(`Successfully saved: ${data.make} ${data.model} (${data.stockId})`);
+                }
+              } catch (error: any) {
+                if (error.code === 11000) {
+                  console.log(`Skipping duplicate: ${data.stockId}`);
+                } else {
+                  console.error('Failed to save listing:', error);
+                }
               }
             }
           }
         }
+        console.log(`Batch crawl finished. Total added: ${addedCount}`);
+      } catch (error) {
+        console.error('Batch crawl background error:', error);
+      } finally {
+        await parser.close();
       }
-      res.json({ message: `Batch crawl completed. Added ${allResults.length} new listings.`, count: allResults.length });
-    } catch (error) {
-      console.error('Batch crawl error:', error);
-      res.status(500).json({ error: 'Batch crawl failed' });
-    } finally {
-      await parser.close();
-    }
+    })();
+
+    res.json({ message: 'Batch scraping started in background. Refresh inventory in a few minutes.' });
   } else {
     res.status(400).json({ error: 'Unsupported supplier' });
   }
