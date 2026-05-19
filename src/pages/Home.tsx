@@ -1,4 +1,5 @@
 import Hero from '../sections/Hero';
+import CarReveal from '../sections/CarReveal';
 import TrustBar from '../sections/TrustBar';
 import MarqueeDestinations from '../sections/MarqueeDestinations';
 import VehicleGrid from '../sections/VehicleGrid';
@@ -11,6 +12,7 @@ export default function Home() {
   return (
     <main>
       <Hero />
+      <CarReveal />
       <TrustBar />
       <MarqueeDestinations />
       <VehicleGrid />
