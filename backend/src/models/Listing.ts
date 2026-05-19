@@ -7,7 +7,7 @@ export interface IListing extends Document {
   stockId: string;
   chassisNumber?: string;
   make: string;
-  model: string;
+  modelName: string;
   grade?: string;
   year: number;
   mileage: number;
