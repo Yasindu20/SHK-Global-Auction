@@ -75,12 +75,41 @@ export default function Inventory() {
       {/* Header */}
       <div className="pt-24 pb-6">
         <div className="container-main">
-          <h1 className="text-h2" style={{ color: 'var(--text-primary)' }}>
-            Vehicle Inventory
-          </h1>
-          <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
-            Browse {allVehicles.length}+ vehicles available from Japanese auctions.
-          </p>
+          <div className="flex justify-between items-end">
+            <div>
+              <h1 className="text-h2" style={{ color: 'var(--text-primary)' }}>
+                Vehicle Inventory
+              </h1>
+              <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
+                Browse {allVehicles.length}+ vehicles available from Japanese auctions.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const btn = document.activeElement as HTMLButtonElement;
+                if (btn) btn.disabled = true;
+                try {
+                  const res = await fetch('http://localhost:5000/api/crawl-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ supplier: 'STC Japan', pages: 1 })
+                  });
+                  const data = await res.json();
+                  alert(data.message || 'Scraping started');
+                  window.location.reload();
+                } catch (e) {
+                  alert('Failed to start scraping');
+                } finally {
+                  if (btn) btn.disabled = false;
+                }
+              }}
+              className="px-4 py-2 rounded-md text-sm font-medium transition-all"
+              style={{ backgroundColor: 'var(--amber)', color: 'var(--bg)' }}
+            >
+              Scrape STC Japan Data
+            </button>
+          </div>
+
         </div>
       </div>
 
