@@ -2,12 +2,25 @@ import { useParams, Link } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
 import { Heart, Share2, ArrowLeft, FileText, MessageCircle } from 'lucide-react';
 import gsap from 'gsap';
-import { vehicles } from '../data/vehicles';
+import { IListing as Vehicle } from '../../backend/src/models/Listing';
 import Footer from '../sections/Footer';
 
 export default function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
-  const vehicle = vehicles.find((v) => v.id === id);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+
+  useEffect(() => {
+    const fetchVehicle = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/api/listings/${id}`);
+        const data = await response.json();
+        setVehicle(data);
+      } catch (error) {
+        console.error("Failed to fetch vehicle details:", error);
+      }
+    };
+    fetchVehicle();
+  }, [id]);
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
 
@@ -55,10 +68,10 @@ export default function VehicleDetail() {
     );
   }
 
-  const shippingCost = Math.round(vehicle.startingBid * 0.07);
-  const insurance = Math.round(vehicle.startingBid * 0.01);
+  const shippingCost = Math.round(vehicle.price * 0.07);
+  const insurance = Math.round(vehicle.price * 0.01);
   const inspection = 280;
-  const total = vehicle.startingBid + shippingCost + insurance + inspection;
+  const total = vehicle.price + shippingCost + insurance + inspection;
 
   return (
     <div style={{ backgroundColor: 'var(--bg)' }}>
@@ -266,7 +279,7 @@ export default function VehicleDetail() {
                 </span>
               </div>
               <span className="block mt-1 text-price" style={{ color: 'var(--amber)' }}>
-                ${vehicle.startingBid.toLocaleString()}
+                ${vehicle.price.toLocaleString()}
               </span>
 
               <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
@@ -275,7 +288,7 @@ export default function VehicleDetail() {
                 </span>
                 <div className="mt-3 space-y-2">
                   {[
-                    { label: 'Vehicle', value: vehicle.startingBid },
+                    { label: 'Vehicle', value: vehicle.price },
                     { label: 'Shipping', value: shippingCost },
                     { label: 'Insurance', value: insurance },
                     { label: 'Inspection', value: inspection },

@@ -3,14 +3,32 @@ import { Link } from 'react-router-dom';
 import { Heart, Search, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { vehicles, type Vehicle } from '../data/vehicles';
+import { type Vehicle } from '../data/vehicles';
+import { IListing as Vehicle } from '../../backend/src/models/Listing';
 import Footer from '../sections/Footer';
 
 gsap.registerPlugin(ScrollTrigger);
 
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/listings');
+        const data = await response.json();
+        setAllVehicles(data.filter((v: Vehicle) => v.status === 'approved'));
+      } catch (error) {
+        console.error('Failed to fetch vehicles:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchVehicles();
+  }, []);
+
 export default function Inventory() {
   const gridRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
+  const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     make: '',
@@ -27,9 +45,9 @@ export default function Inventory() {
   });
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
-  const filteredVehicles = vehicles.filter((v: Vehicle) => {
+  const filteredVehicles = allVehicles.filter((v: Vehicle) => {
     const q = search.toLowerCase();
-    if (search && !`${v.make} ${v.model} ${v.chassisCode}`.toLowerCase().includes(q)) return false;
+    if (search && !`${v.make} ${v.model} ${v.chassisNumber}`.toLowerCase().includes(q)) return false;
     if (filters.make && v.make !== filters.make) return false;
     if (filters.grade && !v.grade.startsWith(filters.grade)) return false;
     if (filters.transmission && v.transmission !== filters.transmission) return false;
@@ -37,8 +55,8 @@ export default function Inventory() {
     if (filters.auctionHouse && v.auctionHouse !== filters.auctionHouse) return false;
     if (filters.yearMin && v.year < parseInt(filters.yearMin)) return false;
     if (filters.yearMax && v.year > parseInt(filters.yearMax)) return false;
-    if (filters.priceMin && v.startingBid < parseInt(filters.priceMin)) return false;
-    if (filters.priceMax && v.startingBid > parseInt(filters.priceMax)) return false;
+    if (filters.priceMin && v.price < parseInt(filters.priceMin)) return false;
+    if (filters.priceMax && v.price > parseInt(filters.priceMax)) return false;
     if (filters.mileageMax && v.mileage > parseInt(filters.mileageMax)) return false;
     return true;
   });
@@ -67,7 +85,7 @@ export default function Inventory() {
             Vehicle Inventory
           </h1>
           <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
-            Browse {vehicles.length}+ vehicles available from Japanese auctions.
+            Browse {allVehicles.length}+ vehicles available from Japanese auctions.
           </p>
         </div>
       </div>
@@ -182,7 +200,7 @@ export default function Inventory() {
         <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredVehicles.map((vehicle) => (
             <div
-              key={vehicle.id}
+              key={vehicle._id}
               className="group rounded-xl overflow-hidden transition-all duration-200"
               style={{
                 backgroundColor: 'var(--surface)',
@@ -221,11 +239,11 @@ export default function Inventory() {
                     {vehicle.year} {vehicle.make} {vehicle.model}
                   </h3>
                   <button
-                    onClick={() => toggleSave(vehicle.id)}
+                    onClick={() => toggleSave(vehicle._id)}
                     className="shrink-0 transition-colors duration-150"
-                    style={{ color: savedIds.has(vehicle.id) ? 'var(--amber)' : 'var(--text-secondary)' }}
+                    style={{ color: savedIds.has(vehicle._id) ? 'var(--amber)' : 'var(--text-secondary)' }}
                   >
-                    <Heart size={18} fill={savedIds.has(vehicle.id) ? 'var(--amber)' : 'none'} />
+                    <Heart size={18} fill={savedIds.has(vehicle._id) ? 'var(--amber)' : 'none'} />
                   </button>
                 </div>
                 <div className="flex items-center gap-3 mt-2" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
@@ -237,7 +255,7 @@ export default function Inventory() {
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <span className="text-price" style={{ color: 'var(--amber)' }}>
-                    From ${vehicle.startingBid.toLocaleString()}
+                    From ${vehicle.price.toLocaleString()}
                   </span>
                   <span className="text-label" style={{ color: 'var(--text-secondary)' }}>
                     CIF Mombasa
@@ -255,7 +273,7 @@ export default function Inventory() {
                   </div>
                 </div>
                 <Link
-                  to={`/vehicle/${vehicle.id}`}
+                  to={`/vehicle/${vehicle._id}`}
                   className="block mt-3 text-center py-2 rounded-md text-sm font-medium transition-all duration-150 hover:brightness-110"
                   style={{ backgroundColor: 'var(--amber-dim)', color: 'var(--amber)' }}
                 >
