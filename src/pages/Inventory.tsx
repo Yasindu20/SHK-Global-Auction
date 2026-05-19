@@ -4,25 +4,9 @@ import { Heart, Search, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { type Vehicle } from '../data/vehicles';
-import { IListing as Vehicle } from '../../backend/src/models/Listing';
 import Footer from '../sections/Footer';
 
 gsap.registerPlugin(ScrollTrigger);
-
-  useEffect(() => {
-    const fetchVehicles = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/listings');
-        const data = await response.json();
-        setAllVehicles(data.filter((v: Vehicle) => v.status === 'approved'));
-      } catch (error) {
-        console.error('Failed to fetch vehicles:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchVehicles();
-  }, []);
 
 export default function Inventory() {
   const gridRef = useRef<HTMLDivElement>(null);
@@ -71,6 +55,21 @@ export default function Inventory() {
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/listings');
+        const data = await response.json();
+        setAllVehicles(data.filter((v: Vehicle) => v.status === 'approved'));
+      } catch (error) {
+        console.error('Failed to fetch vehicles:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchVehicles();
+  }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
