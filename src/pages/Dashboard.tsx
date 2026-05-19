@@ -194,7 +194,7 @@ export default function Dashboard() {
                     {/* Vehicle */}
                     <div className="flex items-center gap-4 mt-4">
                       <img
-                        src={order.vehicle.image}
+                        src={order.vehicle.images[0]}
                         alt={order.vehicle.model}
                         className="w-20 h-14 rounded-lg object-cover"
                       />
@@ -298,7 +298,7 @@ export default function Dashboard() {
               <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {vehicles.slice(0, 3).map((v) => (
                   <div
-                    key={v.id}
+                    key={v._id}
                     className="rounded-xl overflow-hidden"
                     style={{
                       backgroundColor: 'var(--surface)',
@@ -306,7 +306,7 @@ export default function Dashboard() {
                     }}
                   >
                     <img
-                      src={v.image}
+                      src={v.images[0]}
                       alt={v.model}
                       className="w-full h-32 object-cover"
                     />
@@ -315,10 +315,10 @@ export default function Dashboard() {
                         {v.year} {v.make} {v.model}
                       </p>
                       <p className="mt-1 text-price" style={{ color: 'var(--amber)', fontSize: '1.1rem' }}>
-                        From ${v.startingBid.toLocaleString()}
+                        From ${v.price.toLocaleString()}
                       </p>
                       <Link
-                        to={`/vehicle/${v.id}`}
+                        to={`/vehicle/${v._id}`}
                         className="inline-flex items-center gap-1 mt-3 text-sm transition-colors"
                         style={{ color: 'var(--amber)' }}
                       >

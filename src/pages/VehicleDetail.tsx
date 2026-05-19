@@ -1,13 +1,15 @@
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
 import { Heart, Share2, ArrowLeft, FileText, MessageCircle } from 'lucide-react';
 import gsap from 'gsap';
-import { IListing as Vehicle } from '../../backend/src/models/Listing';
+import { type Vehicle } from '../data/vehicles';
 import Footer from '../sections/Footer';
 
 export default function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchVehicle = async () => {
@@ -16,18 +18,16 @@ export default function VehicleDetail() {
         const data = await response.json();
         setVehicle(data);
       } catch (error) {
-        console.error("Failed to fetch vehicle details:", error);
+        console.error('Failed to fetch vehicle details:', error);
       }
     };
     fetchVehicle();
   }, [id]);
-  const leftRef = useRef<HTMLDivElement>(null);
-  const rightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const left = leftRef.current;
     const right = rightRef.current;
-    if (!left || !right) return;
+    if (!left || !right || !vehicle) return;
 
     const sections = left.querySelectorAll('.detail-section');
     const ctx = gsap.context(() => {
@@ -53,13 +53,13 @@ export default function VehicleDetail() {
     });
 
     return () => ctx.revert();
-  }, []);
+  }, [vehicle]);
 
   if (!vehicle) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg)' }}>
         <div className="text-center">
-          <h2 className="text-h2" style={{ color: 'var(--text-primary)' }}>Vehicle not found</h2>
+          <h2 className="text-h2" style={{ color: 'var(--text-primary)' }}>Loading...</h2>
           <Link to="/inventory" className="mt-4 inline-block" style={{ color: 'var(--amber)' }}>
             ← Back to Inventory
           </Link>
@@ -78,7 +78,7 @@ export default function VehicleDetail() {
       {/* Hero image */}
       <div className="relative h-[50vh] md:h-[60vh] overflow-hidden">
         <img
-          src={vehicle.image}
+          src={vehicle.images[0]}
           alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
           className="w-full h-full object-cover"
         />
@@ -127,14 +127,8 @@ export default function VehicleDetail() {
               {vehicle.year} {vehicle.make} {vehicle.model}
             </h1>
             <div className="flex items-center gap-3 mt-2">
-              <span
-                className="px-2 py-0.5 rounded text-xs font-medium"
-                style={{ backgroundColor: 'var(--amber-dim)', color: 'var(--amber)' }}
-              >
-                {vehicle.auctionHouse}
-              </span>
               <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', letterSpacing: '0.08em' }}>
-                {vehicle.auctionDate}
+                {vehicle.supplierName}
               </span>
             </div>
           </div>
@@ -151,10 +145,10 @@ export default function VehicleDetail() {
               {[
                 { label: 'Year', value: vehicle.year.toString() },
                 { label: 'Mileage', value: `${vehicle.mileage.toLocaleString()} km` },
-                { label: 'Engine', value: vehicle.engine },
                 { label: 'Transmission', value: vehicle.transmission },
-                { label: 'Grade', value: vehicle.grade },
+                { label: 'Grade', value: vehicle.grade ?? 'N/A' },
                 { label: 'Fuel', value: vehicle.fuel },
+                { label: 'Color', value: vehicle.color },
               ].map((spec) => (
                 <div
                   key={spec.label}
@@ -180,67 +174,29 @@ export default function VehicleDetail() {
               ))}
             </div>
 
-            {/* Description */}
+            {/* Additional details */}
             <div className="detail-section mt-8 opacity-0">
               <h3 className="text-h4 font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Description
+                Vehicle Details
               </h3>
-              <p className="mt-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                {vehicle.description}
-              </p>
-            </div>
-
-            {/* Auction sheet */}
-            <div className="detail-section mt-8 opacity-0">
-              <h3 className="text-h4 font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Auction Sheet
-              </h3>
-              <div
-                className="mt-3 relative rounded-lg overflow-hidden cursor-pointer group"
-                style={{ border: '1px solid var(--border-subtle)' }}
-              >
-                <img
-                  src="/images/auction-sheet.jpg"
-                  alt="Auction sheet"
-                  className="w-full h-auto object-cover"
-                  style={{ maxHeight: '300px', objectFit: 'cover' }}
-                />
-                <div
-                  className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                  style={{ backgroundColor: 'rgba(10, 10, 10, 0.7)' }}
-                >
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    View Full Report
-                  </span>
+              <div className="mt-3 space-y-2">
+                {vehicle.chassisNumber && (
+                  <div className="flex justify-between py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Chassis Number</span>
+                    <span style={{ color: 'var(--text-primary)', fontSize: '0.875rem', fontFamily: 'monospace' }}>{vehicle.chassisNumber}</span>
+                  </div>
+                )}
+                <div className="flex justify-between py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Stock ID</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>{vehicle.stockId}</span>
                 </div>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                <div
-                  className="p-3 rounded-lg text-center"
-                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-                >
-                  <span className="text-label" style={{ color: 'var(--text-secondary)' }}>Exterior</span>
-                  <span className="block mt-1 font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    {vehicle.exteriorGrade}
-                  </span>
+                <div className="flex justify-between py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Location</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>{vehicle.location}</span>
                 </div>
-                <div
-                  className="p-3 rounded-lg text-center"
-                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-                >
-                  <span className="text-label" style={{ color: 'var(--text-secondary)' }}>Interior</span>
-                  <span className="block mt-1 font-semibold" style={{ color: 'var(--text-primary)' }}>
-                    {vehicle.interiorGrade}
-                  </span>
-                </div>
-                <div
-                  className="p-3 rounded-lg text-center"
-                  style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-                >
-                  <span className="text-label" style={{ color: 'var(--text-secondary)' }}>Damage</span>
-                  <span className="block mt-1 font-semibold" style={{ color: vehicle.damageCodes.length ? 'var(--alert)' : 'var(--success)' }}>
-                    {vehicle.damageCodes.length ? vehicle.damageCodes.join(', ') : 'None'}
-                  </span>
+                <div className="flex justify-between py-2">
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Supplier</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>{vehicle.supplierName}</span>
                 </div>
               </div>
             </div>
