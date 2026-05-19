@@ -21,7 +21,7 @@ export default function VehicleGrid() {
   const filteredVehicles = vehicles.filter((v: Vehicle) => {
     if (filters.make && v.make !== filters.make) return false;
     if (filters.year && v.year !== parseInt(filters.year)) return false;
-    if (filters.grade && !v.grade.startsWith(filters.grade)) return false;
+    if (filters.grade && !v.grade?.startsWith(filters.grade)) return false;
     if (filters.fuel && v.fuel !== filters.fuel) return false;
     return true;
   });
@@ -169,7 +169,7 @@ export default function VehicleGrid() {
             {filteredVehicles.length} vehicles found
           </span>
           <div className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Sort: Auction Date <ChevronDown size={14} />
+            Sort: Latest <ChevronDown size={14} />
           </div>
         </div>
 
@@ -181,7 +181,7 @@ export default function VehicleGrid() {
         >
           {filteredVehicles.map((vehicle, index) => (
             <div
-              key={vehicle.id}
+              key={vehicle._id}
               ref={(el) => { cardsRef.current[index] = el; }}
               className="group rounded-xl overflow-hidden transition-all duration-200"
               style={{
@@ -206,7 +206,7 @@ export default function VehicleGrid() {
               {/* Image area */}
               <div className="relative overflow-hidden" style={{ aspectRatio: '16/10', backgroundColor: '#0F0F0F' }}>
                 <img
-                  src={vehicle.image}
+                  src={vehicle.images[0]}
                   alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
                   className="card-image w-full h-full object-cover transition-transform duration-300"
                   loading="lazy"
@@ -220,7 +220,7 @@ export default function VehicleGrid() {
                     letterSpacing: '0.08em',
                   }}
                 >
-                  {vehicle.auctionHouse}
+                  {vehicle.supplierName}
                 </span>
               </div>
 
@@ -234,17 +234,17 @@ export default function VehicleGrid() {
                     {vehicle.year} {vehicle.make} {vehicle.model}
                   </h3>
                   <button
-                    onClick={() => toggleSave(vehicle.id)}
+                    onClick={() => toggleSave(vehicle._id)}
                     className="shrink-0 transition-colors duration-150"
-                    style={{ color: savedIds.has(vehicle.id) ? 'var(--amber)' : 'var(--text-secondary)' }}
+                    style={{ color: savedIds.has(vehicle._id) ? 'var(--amber)' : 'var(--text-secondary)' }}
                   >
-                    <Heart size={18} fill={savedIds.has(vehicle.id) ? 'var(--amber)' : 'none'} />
+                    <Heart size={18} fill={savedIds.has(vehicle._id) ? 'var(--amber)' : 'none'} />
                   </button>
                 </div>
 
                 <div className="flex items-center gap-3 mt-2" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                  <span>Grade {vehicle.grade}</span>
-                  <span>·</span>
+                  {vehicle.grade && <span>Grade {vehicle.grade}</span>}
+                  {vehicle.grade && <span>·</span>}
                   <span>{vehicle.mileage.toLocaleString()} km</span>
                   <span>·</span>
                   <span>{vehicle.fuel}</span>
@@ -252,7 +252,7 @@ export default function VehicleGrid() {
 
                 <div className="flex items-center justify-between mt-3">
                   <span className="text-price" style={{ color: 'var(--amber)' }}>
-                    From ${vehicle.startingBid.toLocaleString()}
+                    From ${vehicle.price.toLocaleString()}
                   </span>
                   <span className="text-label" style={{ color: 'var(--text-secondary)' }}>
                     CIF Mombasa
@@ -261,7 +261,7 @@ export default function VehicleGrid() {
 
                 <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', letterSpacing: '0.08em' }}>
-                    Auction: {vehicle.auctionDate}
+                    {vehicle.supplierName}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <span
@@ -275,7 +275,7 @@ export default function VehicleGrid() {
                 </div>
 
                 <Link
-                  to={`/vehicle/${vehicle.id}`}
+                  to={`/vehicle/${vehicle._id}`}
                   className="block mt-3 text-center py-2 rounded-md text-sm font-medium transition-all duration-150 hover:brightness-110"
                   style={{
                     backgroundColor: 'var(--amber-dim)',

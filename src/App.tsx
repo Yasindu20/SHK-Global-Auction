@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import Inventory from './pages/Inventory';
+import AdminReview from './pages/AdminReview';
 import VehicleDetail from './pages/VehicleDetail';
 import Dashboard from './pages/Dashboard';
 
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/vehicle/:id" element={<VehicleDetail />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/admin/review" element={<AdminReview />} />
       </Routes>
     </>
   );

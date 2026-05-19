@@ -20,6 +20,9 @@ interface SceneState {
 /**
  * Real car photography from Unsplash (free, CORS-enabled CDN).
  * Cropped to 16:10 to match our plane aspect ratio.
+ *
+ * FIX: photo-1605559424843-9073c6e5e19b returned 404 — replaced with
+ *      photo-1492144534655-ae79c964c9d7 (working interior/dashboard shot).
  */
 const CAR_IMAGES = [
   // 1 — Dark studio exterior, hero front angle
@@ -28,8 +31,8 @@ const CAR_IMAGES = [
   'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=1920&h=1200&q=85&auto=format&fit=crop&crop=center',
   // 3 — JDM exterior action
   'https://images.unsplash.com/photo-1580427331730-b38f8dc1f355?w=1920&h=1200&q=85&auto=format&fit=crop&crop=center',
-  // 4 — Luxury interior, dashboard close-up
-  'https://images.unsplash.com/photo-1605559424843-9073c6e5e19b?w=1920&h=1200&q=85&auto=format&fit=crop&crop=center',
+  // 4 — Interior / cockpit (replaced broken URL)
+  'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1920&h=1200&q=85&auto=format&fit=crop&crop=center',
   // 5 — Steering wheel & cockpit detail
   'https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=1920&h=1200&q=85&auto=format&fit=crop&crop=center',
   // 6 — JDM exterior second angle
@@ -80,22 +83,18 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
     const ambient = new THREE.AmbientLight(0x111111, 1);
     scene.add(ambient);
 
-    // Warm key light (like a studio fill)
     const keyLight = new THREE.DirectionalLight(0xfff0dd, 1.6);
     keyLight.position.set(8, 10, 6);
     scene.add(keyLight);
 
-    // Cool fill light for cinematic contrast
     const fillLight = new THREE.DirectionalLight(0x3355aa, 0.5);
     fillLight.position.set(-8, 4, -4);
     scene.add(fillLight);
 
-    // Amber rim light (signature colour of the site)
     const rimLight = new THREE.DirectionalLight(0xd4a853, 0.8);
     rimLight.position.set(0, -2, -10);
     scene.add(rimLight);
 
-    // Three tracked spot lights — activated per-plane
     const spotLights: THREE.SpotLight[] = [];
     for (let i = 0; i < 3; i++) {
       const spot = new THREE.SpotLight(0xfff5e8, 0, 25, Math.PI / 3.5, 0.25, 1.8);
@@ -105,33 +104,18 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
     }
 
     /* ─── Image Planes ──────────────────────────────────────── */
-    //  All planes use 16:10 ratio (12.8 × 8) to match the photo crop.
-    //  Positions are laid out so the camera path sweeps CLOSE to each one.
-    //
-    //  Rotation note:
-    //   [0,0,0]        → face +z  (camera must be at higher z to see front)
-    //   [0,PI,0]       → face −z
-    //   [0,PI/2,0]     → face −x
-    //   [0,-PI/2,0]    → face +x
     const P = Math.PI;
     const planeConfigs: {
       pos: [number, number, number];
       rot: [number, number, number];
       scale: [number, number, number];
     }[] = [
-      // Plane 0 — exterior hero, faces +z; camera approaches from z > 0
       { pos: [0, 0, -5],   rot: [0, 0, 0],         scale: [12.8, 8, 1] },
-      // Plane 1 — right side panel, faces −x; camera approaches from x > 5
       { pos: [6, 0, 1],    rot: [0, P / 2, 0],     scale: [12.8, 8, 1] },
-      // Plane 2 — rear shot, faces −z; camera sees it while pulling back
       { pos: [0, 0, 7],    rot: [0, P, 0],          scale: [12.8, 8, 1] },
-      // Plane 3 — dashboard, faces +z; very close fly-by
       { pos: [0, 0.3, -2], rot: [0, 0, 0],          scale: [10, 6.25, 1] },
-      // Plane 4 — cockpit/interior, faces +z
       { pos: [0, 0.1, 1],  rot: [0, 0, 0],          scale: [10, 6.25, 1] },
-      // Plane 5 — JDM action, angled left
       { pos: [-6, 0, 3],   rot: [0, -P / 5, 0],    scale: [10, 6.25, 1] },
-      // Plane 6 — dramatic detail, tilted
       { pos: [3, 1.2, -1], rot: [0.15, -P / 5, 0], scale: [8, 5, 1] },
     ];
 
@@ -147,8 +131,6 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
       texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
       const geo = new THREE.PlaneGeometry(1, 1);
-      // MeshBasicMaterial: images rendered at full photographic quality,
-      // independent of scene lighting — like a real cinema screen.
       const mat = new THREE.MeshBasicMaterial({
         map: texture,
         side: THREE.DoubleSide,
@@ -165,9 +147,7 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
       planes.push(mesh);
     });
 
-    /* ─── Thin edge glow frames around each plane ────────────── */
-    // Stored parallel to `planes` so the animate loop can index directly
-    // without scene-traversal or TypeScript casting hacks.
+    /* ─── Edge glow frames ────────────────────────────────────── */
     const frames: THREE.LineSegments[] = [];
     planeConfigs.forEach((cfg, i) => {
       const [sw, sh] = cfg.scale;
@@ -182,11 +162,10 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
       const frame = new THREE.LineSegments(frameGeo, frameMat);
       frame.position.set(...cfg.pos);
       frame.rotation.set(...cfg.rot);
-      // Tiny z-offset on axis-aligned planes to prevent z-fighting
       if (cfg.rot[1] === 0) frame.position.z += 0.01;
       scene.add(frame);
       frames.push(frame);
-      void i; // satisfies noUnusedLocals (index only used for push order)
+      void i;
     });
 
     /* ─── Reflective floor ───────────────────────────────────── */
@@ -223,7 +202,7 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
     const particles = new THREE.Points(pGeo, pMat);
     scene.add(particles);
 
-    /* ─── Subtle light shafts (additive planes) ──────────────── */
+    /* ─── Light shafts ───────────────────────────────────────── */
     const shaftGeo = new THREE.PlaneGeometry(0.4, 14);
     const shaftMat = new THREE.MeshBasicMaterial({
       color: 0xd4a853,
@@ -245,28 +224,22 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
       scene.add(shaft);
     }
 
-    /* ─── Cinematic camera fly-through path ──────────────────── */
-    //  The camera:
-    //  1. Opens wide, high above — establishing shot
-    //  2. Swoops down and right, getting close to the side panel (plane 1)
-    //  3. Arcs left around the front, gets within ~1 unit of plane 0
-    //  4. Dips into the interior zone (planes 3 & 4)
-    //  5. Pulls back and rises for the hero outro
+    /* ─── Camera path ────────────────────────────────────────── */
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0, 2.5, 13),   // 0.00 — wide establishing
-      new THREE.Vector3(2, 1.5, 10),   // 0.09 — drift right
-      new THREE.Vector3(5, 0.8, 7),    // 0.18 — move to right flank
-      new THREE.Vector3(7, 0, 3),      // 0.27 — close to plane 1 (at x=6)
-      new THREE.Vector3(6, 0, -1),     // 0.36 — sweeping past right
-      new THREE.Vector3(3, 0, -4),     // 0.45 — arcing to the front
-      new THREE.Vector3(0, 0, -4),     // 0.54 — right in front of plane 0
-      new THREE.Vector3(-1, 0.4, -1),  // 0.63 — easing into interior
-      new THREE.Vector3(0, 0.3, 1.5),  // 0.72 — interior / plane 4 zone
-      new THREE.Vector3(-3, 1, 4),     // 0.81 — coming out left
-      new THREE.Vector3(0, 2, 8),      // 0.90 — pulling back
-      new THREE.Vector3(0, 2.8, 13),   // 1.00 — back to wide outro
+      new THREE.Vector3(0, 2.5, 13),
+      new THREE.Vector3(2, 1.5, 10),
+      new THREE.Vector3(5, 0.8, 7),
+      new THREE.Vector3(7, 0, 3),
+      new THREE.Vector3(6, 0, -1),
+      new THREE.Vector3(3, 0, -4),
+      new THREE.Vector3(0, 0, -4),
+      new THREE.Vector3(-1, 0.4, -1),
+      new THREE.Vector3(0, 0.3, 1.5),
+      new THREE.Vector3(-3, 1, 4),
+      new THREE.Vector3(0, 2, 8),
+      new THREE.Vector3(0, 2.8, 13),
     ]);
-    curve.tension = 0.4; // smoother, less angular
+    curve.tension = 0.4;
 
     const state: SceneState = {
       camera,
@@ -293,33 +266,26 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
       const target = state.curve.getPointAt(t);
       const lookTarget = state.curve.getPointAt(tLook);
 
-      // Smooth camera follow
       state.camera.position.lerp(target, 0.09);
       state.camera.lookAt(lookTarget);
 
-      // Gentle particle drift
       state.particles.rotation.y += 0.00015;
 
-      // Per-plane: opacity & spotlight driven by camera proximity
       let spotIdx = 0;
       state.planes.forEach((plane, i) => {
         const dist = state.camera.position.distanceTo(plane.position);
         const mat = plane.material as THREE.MeshBasicMaterial;
 
-        // Fade band: invisible beyond 9 units, peaks ~0.96 at ≤1 unit
         const raw = dist < 9 ? Math.max(0, 1 - dist / 9) : 0;
         const targetOpacity = raw * 0.96;
         mat.opacity += (targetOpacity - mat.opacity) * 0.055;
 
-        // Sync edge-frame opacity directly (no scene traverse needed)
         const fm = frames[i].material as THREE.LineBasicMaterial;
         fm.opacity = mat.opacity * 0.45;
 
-        // Assign a spotlight to the 3 nearest visible planes
         if (spotIdx < 3 && dist < 12 && mat.opacity > 0.05) {
           const spot = state.spotLights[spotIdx];
           spot.intensity = (1 - dist / 12) * 2.8;
-          // Position spot slightly above and behind the camera
           spot.position.set(
             plane.position.x + 4,
             plane.position.y + 6,
@@ -331,9 +297,8 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
         }
       });
 
-      // Zero out any unused spotlights this frame
       for (let k = spotIdx; k < state.spotLights.length; k++) {
-        state.spotLights[k].intensity *= 0.92; // gentle fade-off
+        state.spotLights[k].intensity *= 0.92;
       }
 
       state.renderer.render(state.scene, state.camera);
@@ -365,7 +330,7 @@ export default function CarRevealScene({ scrollProgress }: CarRevealSceneProps) 
       });
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
     };
-  }, []); // intentionally empty — Three.js scene mounts once
+  }, []);
 
   return (
     <div
