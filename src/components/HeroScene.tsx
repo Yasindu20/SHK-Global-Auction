@@ -29,7 +29,8 @@ export default function HeroScene() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(0x030303);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // FIX: PCFSoftShadowMap is deprecated in newer Three.js — use PCFShadowMap instead
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
