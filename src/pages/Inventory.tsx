@@ -1,37 +1,51 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Search, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
-import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { Heart, Search, ChevronDown, SlidersHorizontal, X, RefreshCw, Loader2, CheckCircle, AlertCircle, ChevronUp } from 'lucide-react';
 import { type Vehicle } from '../data/vehicles';
 import Footer from '../sections/Footer';
 
-gsap.registerPlugin(ScrollTrigger);
+const API = 'http://localhost:5000';
+
+interface CrawlStatus {
+  running: boolean;
+  added: number;
+  skipped: number;
+  failed: number;
+  startedAt?: string;
+  finishedAt?: string;
+  recentLogs: string[];
+}
 
 export default function Inventory() {
   const gridRef = useRef<HTMLDivElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
   const [search, setSearch] = useState('');
   const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+  const [showCrawlPanel, setShowCrawlPanel] = useState(false);
+  const [crawlStatus, setCrawlStatus] = useState<CrawlStatus | null>(null);
+  const [scrapeMsg, setScrapeMsg] = useState('');
+
   const [filters, setFilters] = useState({
     make: '',
-    model: '',
     yearMin: '',
     yearMax: '',
     priceMin: '',
     priceMax: '',
     mileageMax: '',
-    grade: '',
     transmission: '',
     fuel: '',
   });
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
-  const filteredVehicles = allVehicles.filter((v: Vehicle) => {
+  // ── Filtering ────────────────────────────────────────────────────────────────
+  const filteredVehicles = allVehicles.filter((v) => {
     const q = search.toLowerCase();
-    if (search && !`${v.make} ${v.model} ${v.chassisNumber ?? ''}`.toLowerCase().includes(q)) return false;
+    if (search && !`${v.make} ${v.model} ${v.chassisNumber ?? ''}`.toLowerCase().includes(q))
+      return false;
     if (filters.make && v.make !== filters.make) return false;
-    if (filters.grade && !v.grade?.startsWith(filters.grade)) return false;
     if (filters.transmission && v.transmission !== filters.transmission) return false;
     if (filters.fuel && v.fuel !== filters.fuel) return false;
     if (filters.yearMin && v.year < parseInt(filters.yearMin)) return false;
@@ -42,59 +56,316 @@ export default function Inventory() {
     return true;
   });
 
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  // ── Fetch vehicles ────────────────────────────────────────────────────────────
+  const fetchVehicles = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/api/listings`);
+      const data = await res.json();
+      setAllVehicles(data);
+    } catch (e) {
+      console.error('Failed to fetch vehicles:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Fetch crawl status ────────────────────────────────────────────────────────
+  const fetchCrawlStatus = async () => {
+    try {
+      const res = await fetch(`${API}/api/crawl-status`);
+      const data = await res.json();
+      setCrawlStatus(data);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // ── Poll crawl status while running ──────────────────────────────────────────
+  useEffect(() => {
+    fetchVehicles();
+    fetchCrawlStatus();
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    if (!crawlStatus?.running) return;
+    const interval = setInterval(async () => {
+      await fetchCrawlStatus();
+      // Refresh inventory every 20 s while scraping
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [crawlStatus?.running]);
+
+  // Re-fetch vehicles when crawl finishes
+  const prevRunning = useRef(false);
+  useEffect(() => {
+    if (prevRunning.current && !crawlStatus?.running) {
+      fetchVehicles();
+    }
+    prevRunning.current = crawlStatus?.running ?? false;
+  }, [crawlStatus?.running]);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [crawlStatus?.recentLogs]);
+
+  // ── Start scrape ──────────────────────────────────────────────────────────────
+  const startScrape = async () => {
+    setScrapeMsg('');
+    try {
+      const res = await fetch(`${API}/api/crawl-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supplier: 'STC Japan', minYear: 2025 }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setScrapeMsg(data.message);
+        setShowCrawlPanel(true);
+        fetchCrawlStatus();
+      } else {
+        setScrapeMsg(data.error || 'Failed to start scraping');
+      }
+    } catch {
+      setScrapeMsg('Could not connect to backend.');
+    }
+  };
+
+  // ── Stop scrape ───────────────────────────────────────────────────────────────
+  const stopScrape = async () => {
+    await fetch(`${API}/api/crawl-stop`, { method: 'POST' });
+    fetchCrawlStatus();
+  };
+
   const toggleSave = (id: string) => {
     setSavedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
-
-  useEffect(() => {
-    const fetchVehicles = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/listings');
-        const data = await response.json();
-        setAllVehicles(data.filter((v: Vehicle) => v.status === 'approved'));
-      } catch (error) {
-        console.error('Failed to fetch vehicles:', error);
-      }
-    };
-    fetchVehicles();
-  }, []);
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  // ── Image fallback ────────────────────────────────────────────────────────────
+  const getImageSrc = (vehicle: Vehicle) => {
+    if (vehicle.images && vehicle.images.length > 0) return vehicle.images[0];
+    return `https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=800&h=500&q=80&auto=format&fit=crop`;
+  };
 
   return (
     <div style={{ backgroundColor: 'var(--bg)' }}>
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────────────── */}
       <div className="pt-24 pb-6">
         <div className="container-main">
-          <h1 className="text-h2" style={{ color: 'var(--text-primary)' }}>
-            Vehicle Inventory
-          </h1>
-          <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
-            Browse {allVehicles.length}+ vehicles available from Japanese auctions.
-          </p>
+          <div className="flex flex-wrap justify-between items-end gap-4">
+            <div>
+              <h1 className="text-h2" style={{ color: 'var(--text-primary)' }}>
+                Vehicle Inventory
+              </h1>
+              <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
+                {loading
+                  ? 'Loading...'
+                  : `${allVehicles.length} approved vehicles from Japanese auctions.`}
+              </p>
+            </div>
+
+            {/* Scrape controls */}
+            <div className="flex items-center gap-2">
+              {crawlStatus?.running && (
+                <button
+                  onClick={stopScrape}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
+                  style={{
+                    backgroundColor: 'rgba(239,68,68,0.15)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                  }}
+                >
+                  <AlertCircle size={14} /> Stop Crawl
+                </button>
+              )}
+              <button
+                onClick={() => setShowCrawlPanel(!showCrawlPanel)}
+                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all"
+                style={{
+                  backgroundColor: 'var(--surface)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {showCrawlPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                Crawl Status
+              </button>
+              <button
+                onClick={fetchVehicles}
+                className="p-2 rounded-md transition-all"
+                title="Refresh inventory"
+                style={{
+                  backgroundColor: 'var(--surface)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <RefreshCw size={14} />
+              </button>
+              <button
+                onClick={startScrape}
+                disabled={crawlStatus?.running}
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--amber)', color: 'var(--bg)' }}
+              >
+                {crawlStatus?.running ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Scraping…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={14} /> Scrape STC Japan (2025+)
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* ── Crawl status panel ──────────────────────────────────────────────── */}
+          {showCrawlPanel && (
+            <div
+              className="mt-4 rounded-xl p-4"
+              style={{
+                backgroundColor: 'var(--surface)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  Crawl Monitor
+                </span>
+                {crawlStatus?.running ? (
+                  <span
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
+                    style={{
+                      backgroundColor: 'rgba(212,168,83,0.15)',
+                      color: 'var(--amber)',
+                    }}
+                  >
+                    <Loader2 size={10} className="animate-spin" /> Running
+                  </span>
+                ) : crawlStatus?.finishedAt ? (
+                  <span
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
+                    style={{
+                      backgroundColor: 'rgba(74,222,128,0.15)',
+                      color: 'var(--success)',
+                    }}
+                  >
+                    <CheckCircle size={10} /> Done
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Idle
+                  </span>
+                )}
+              </div>
+
+              {/* Stats row */}
+              {crawlStatus && (
+                <div className="flex gap-6 mb-3">
+                  {[
+                    { label: 'Added', value: crawlStatus.added, color: 'var(--success)' },
+                    { label: 'Duplicates', value: crawlStatus.skipped, color: 'var(--text-secondary)' },
+                    { label: 'Failed', value: crawlStatus.failed, color: '#ef4444' },
+                  ].map((s) => (
+                    <div key={s.label}>
+                      <span
+                        className="text-xl font-bold"
+                        style={{ color: s.color }}
+                      >
+                        {s.value}
+                      </span>
+                      <span
+                        className="block text-xs"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {s.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Log output */}
+              <div
+                ref={logRef}
+                className="rounded-lg p-3 font-mono text-xs overflow-y-auto"
+                style={{
+                  backgroundColor: '#0A0A0A',
+                  border: '1px solid var(--border-subtle)',
+                  maxHeight: '240px',
+                  color: '#8A8279',
+                }}
+              >
+                {crawlStatus?.recentLogs.length === 0 ? (
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    No logs yet. Start a crawl to see output here.
+                  </span>
+                ) : (
+                  crawlStatus?.recentLogs.map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: line.includes('✅')
+                          ? '#4ade80'
+                          : line.includes('❌') || line.includes('💥')
+                          ? '#ef4444'
+                          : line.includes('⏭')
+                          ? '#6b7280'
+                          : line.includes('🚀') || line.includes('📄')
+                          ? 'var(--amber)'
+                          : '#8A8279',
+                      }}
+                    >
+                      {line}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {scrapeMsg && (
+                <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {scrapeMsg}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="sticky top-16 z-30" style={{ backgroundColor: 'rgba(10, 10, 10, 0.92)', backdropFilter: 'blur(12px)' }}>
+      {/* ── Filter bar ─────────────────────────────────────────────────────────── */}
+      <div
+        className="sticky top-16 z-30"
+        style={{
+          backgroundColor: 'rgba(10, 10, 10, 0.92)',
+          backdropFilter: 'blur(12px)',
+        }}
+      >
         <div className="container-main py-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-grow max-w-lg">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--text-secondary)' }}
+              />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by make, model, or chassis code..."
+                placeholder="Search by make, model, or chassis code…"
                 className="w-full pl-9 pr-4 py-2.5 rounded-md text-sm outline-none"
                 style={{
                   backgroundColor: 'var(--surface)',
@@ -116,15 +387,22 @@ export default function Inventory() {
               onClick={() => setShowFilters(!showFilters)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-md text-sm transition-colors"
               style={{
-                backgroundColor: activeFilterCount > 0 ? 'var(--amber-dim)' : 'var(--surface)',
-                border: `1px solid ${activeFilterCount > 0 ? 'var(--amber)' : 'var(--border-subtle)'}`,
-                color: activeFilterCount > 0 ? 'var(--amber)' : 'var(--text-secondary)',
+                backgroundColor:
+                  activeFilterCount > 0 ? 'var(--amber-dim)' : 'var(--surface)',
+                border: `1px solid ${
+                  activeFilterCount > 0 ? 'var(--amber)' : 'var(--border-subtle)'
+                }`,
+                color:
+                  activeFilterCount > 0 ? 'var(--amber)' : 'var(--text-secondary)',
               }}
             >
               <SlidersHorizontal size={14} />
               Filters
               {activeFilterCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'var(--amber)', color: 'var(--bg)' }}>
+                <span
+                  className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                  style={{ backgroundColor: 'var(--amber)', color: 'var(--bg)' }}
+                >
                   {activeFilterCount}
                 </span>
               )}
@@ -133,51 +411,140 @@ export default function Inventory() {
 
           {/* Expanded filters */}
           {showFilters && (
-            <div className="mt-3 p-4 rounded-lg grid grid-cols-2 md:grid-cols-4 gap-3" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-subtle)' }}>
-              <SelectFilter label="Make" value={filters.make} options={['Toyota', 'Honda', 'Nissan', 'Mazda']} onChange={(v) => setFilters((p) => ({ ...p, make: v }))} />
-              <SelectFilter label="Grade" value={filters.grade} options={['5', '4.5', '4', '3.5']} onChange={(v) => setFilters((p) => ({ ...p, grade: v }))} />
-              <SelectFilter label="Transmission" value={filters.transmission} options={['Automatic', 'CVT', 'Manual']} onChange={(v) => setFilters((p) => ({ ...p, transmission: v }))} />
-              <SelectFilter label="Fuel" value={filters.fuel} options={['Petrol', 'Diesel', 'Hybrid']} onChange={(v) => setFilters((p) => ({ ...p, fuel: v }))} />
+            <div
+              className="mt-3 p-4 rounded-lg grid grid-cols-2 md:grid-cols-4 gap-3"
+              style={{
+                backgroundColor: 'var(--surface)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <SelectFilter
+                label="Make"
+                value={filters.make}
+                options={['Toyota', 'Honda', 'Nissan', 'Mazda', 'Subaru', 'Mitsubishi', 'Lexus']}
+                onChange={(v) => setFilters((p) => ({ ...p, make: v }))}
+              />
+              <SelectFilter
+                label="Transmission"
+                value={filters.transmission}
+                options={['Automatic', 'CVT', 'Manual']}
+                onChange={(v) => setFilters((p) => ({ ...p, transmission: v }))}
+              />
+              <SelectFilter
+                label="Fuel"
+                value={filters.fuel}
+                options={['Petrol', 'Diesel', 'Hybrid', 'Electric']}
+                onChange={(v) => setFilters((p) => ({ ...p, fuel: v }))}
+              />
               <div>
-                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>Year Min</span>
+                <span
+                  className="text-label block mb-1"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Year Min
+                </span>
                 <input
                   type="number"
                   value={filters.yearMin}
-                  onChange={(e) => setFilters((p) => ({ ...p, yearMin: e.target.value }))}
-                  placeholder="2018"
+                  onChange={(e) =>
+                    setFilters((p) => ({ ...p, yearMin: e.target.value }))
+                  }
+                  placeholder="2025"
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
-                  style={{ backgroundColor: 'var(--surface-light)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                  style={{
+                    backgroundColor: 'var(--surface-light)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
+                  }}
                 />
               </div>
               <div>
-                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>Year Max</span>
+                <span
+                  className="text-label block mb-1"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Year Max
+                </span>
                 <input
                   type="number"
                   value={filters.yearMax}
-                  onChange={(e) => setFilters((p) => ({ ...p, yearMax: e.target.value }))}
+                  onChange={(e) =>
+                    setFilters((p) => ({ ...p, yearMax: e.target.value }))
+                  }
                   placeholder="2026"
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
-                  style={{ backgroundColor: 'var(--surface-light)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                  style={{
+                    backgroundColor: 'var(--surface-light)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
+                  }}
                 />
               </div>
               <div>
-                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>Max Price</span>
+                <span
+                  className="text-label block mb-1"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Max Price ($)
+                </span>
                 <input
                   type="number"
                   value={filters.priceMax}
-                  onChange={(e) => setFilters((p) => ({ ...p, priceMax: e.target.value }))}
+                  onChange={(e) =>
+                    setFilters((p) => ({ ...p, priceMax: e.target.value }))
+                  }
                   placeholder="100000"
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
-                  style={{ backgroundColor: 'var(--surface-light)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                  style={{
+                    backgroundColor: 'var(--surface-light)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
+                  }}
                 />
               </div>
-              <div className="col-span-2 md:col-span-4 flex items-center justify-between pt-2">
+              <div>
+                <span
+                  className="text-label block mb-1"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Max Mileage (km)
+                </span>
+                <input
+                  type="number"
+                  value={filters.mileageMax}
+                  onChange={(e) =>
+                    setFilters((p) => ({ ...p, mileageMax: e.target.value }))
+                  }
+                  placeholder="100000"
+                  className="w-full px-3 py-2 rounded-md text-sm outline-none"
+                  style={{
+                    backgroundColor: 'var(--surface-light)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+              <div
+                className="col-span-2 md:col-span-4 flex items-center justify-between pt-2"
+                style={{ borderTop: '1px solid var(--border-subtle)' }}
+              >
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                   {filteredVehicles.length} results
                 </span>
                 <button
-                  onClick={() => setFilters({ make: '', model: '', yearMin: '', yearMax: '', priceMin: '', priceMax: '', mileageMax: '', grade: '', transmission: '', fuel: '' })}
-                  className="text-sm transition-colors"
+                  onClick={() =>
+                    setFilters({
+                      make: '',
+                      yearMin: '',
+                      yearMax: '',
+                      priceMin: '',
+                      priceMax: '',
+                      mileageMax: '',
+                      transmission: '',
+                      fuel: '',
+                    })
+                  }
+                  className="text-sm"
                   style={{ color: 'var(--amber)' }}
                 >
                   Reset All
@@ -188,102 +555,67 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Results */}
+      {/* ── Results grid ───────────────────────────────────────────────────────── */}
       <div className="container-main py-8">
-        <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredVehicles.map((vehicle) => (
-            <div
-              key={vehicle._id}
-              className="group rounded-xl overflow-hidden transition-all duration-200"
-              style={{
-                backgroundColor: 'var(--surface)',
-                border: '1px solid var(--border-subtle)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-strong)';
-                e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.3)';
-                const img = e.currentTarget.querySelector('.card-image') as HTMLElement;
-                if (img) img.style.transform = 'scale(1.04)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.boxShadow = 'none';
-                const img = e.currentTarget.querySelector('.card-image') as HTMLElement;
-                if (img) img.style.transform = 'scale(1)';
-              }}
-            >
-              <div className="relative overflow-hidden" style={{ aspectRatio: '16/10', backgroundColor: '#0F0F0F' }}>
-                <img
-                  src={vehicle.images[0]}
-                  alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-                  className="card-image w-full h-full object-cover transition-transform duration-300"
-                  loading="lazy"
-                />
-              </div>
-              <div className="p-4">
-                <div className="flex items-start justify-between">
-                  <h3 className="font-semibold text-sm truncate pr-2" style={{ color: 'var(--text-primary)' }}>
-                    {vehicle.year} {vehicle.make} {vehicle.model}
-                  </h3>
-                  <button
-                    onClick={() => toggleSave(vehicle._id)}
-                    className="shrink-0 transition-colors duration-150"
-                    style={{ color: savedIds.has(vehicle._id) ? 'var(--amber)' : 'var(--text-secondary)' }}
-                  >
-                    <Heart size={18} fill={savedIds.has(vehicle._id) ? 'var(--amber)' : 'none'} />
-                  </button>
-                </div>
-                <div className="flex items-center gap-3 mt-2" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                  {vehicle.grade && <span>Grade {vehicle.grade}</span>}
-                  {vehicle.grade && <span>·</span>}
-                  <span>{vehicle.mileage.toLocaleString()} km</span>
-                  <span>·</span>
-                  <span>{vehicle.fuel}</span>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <span className="text-price" style={{ color: 'var(--amber)' }}>
-                    From ${vehicle.price.toLocaleString()}
-                  </span>
-                  <span className="text-label" style={{ color: 'var(--text-secondary)' }}>
-                    CIF Mombasa
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
-                    {vehicle.supplierName}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--success)' }} />
-                    <span style={{ color: 'var(--success)', fontSize: '0.75rem', letterSpacing: '0.08em' }}>
-                      Available
-                    </span>
-                  </div>
-                </div>
-                <Link
-                  to={`/vehicle/${vehicle._id}`}
-                  className="block mt-3 text-center py-2 rounded-md text-sm font-medium transition-all duration-150 hover:brightness-110"
-                  style={{ backgroundColor: 'var(--amber-dim)', color: 'var(--amber)' }}
-                >
-                  View Details
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {filteredVehicles.length === 0 && (
-          <div className="text-center py-20">
-            <p className="text-h4" style={{ color: 'var(--text-secondary)' }}>
-              No vehicles match your filters.
-            </p>
-            <button
-              onClick={() => { setSearch(''); setFilters({ make: '', model: '', yearMin: '', yearMax: '', priceMin: '', priceMax: '', mileageMax: '', grade: '', transmission: '', fuel: '' }); }}
-              className="mt-4 inline-block font-medium"
-              style={{ color: 'var(--amber)' }}
-            >
-              Clear all filters
-            </button>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <Loader2 size={32} className="animate-spin" style={{ color: 'var(--amber)' }} />
+            <p style={{ color: 'var(--text-secondary)' }}>Loading inventory…</p>
           </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                {filteredVehicles.length} vehicle{filteredVehicles.length !== 1 ? 's' : ''} found
+              </span>
+            </div>
+
+            <div
+              ref={gridRef}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            >
+              {filteredVehicles.map((vehicle) => (
+                <VehicleCard
+                  key={vehicle._id}
+                  vehicle={vehicle}
+                  saved={savedIds.has(vehicle._id)}
+                  onToggleSave={() => toggleSave(vehicle._id)}
+                  imageSrc={getImageSrc(vehicle)}
+                />
+              ))}
+            </div>
+
+            {filteredVehicles.length === 0 && (
+              <div className="text-center py-20">
+                <p className="text-h4" style={{ color: 'var(--text-secondary)' }}>
+                  {allVehicles.length === 0
+                    ? 'No vehicles in the database yet. Click "Scrape STC Japan" to import data.'
+                    : 'No vehicles match your filters.'}
+                </p>
+                {allVehicles.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setSearch('');
+                      setFilters({
+                        make: '',
+                        yearMin: '',
+                        yearMax: '',
+                        priceMin: '',
+                        priceMax: '',
+                        mileageMax: '',
+                        transmission: '',
+                        fuel: '',
+                      });
+                    }}
+                    className="mt-4 inline-block font-medium"
+                    style={{ color: 'var(--amber)' }}
+                  >
+                    Clear all filters
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -292,6 +624,152 @@ export default function Inventory() {
   );
 }
 
+// ── Vehicle Card ────────────────────────────────────────────────────────────────
+function VehicleCard({
+  vehicle,
+  saved,
+  onToggleSave,
+  imageSrc,
+}: {
+  vehicle: Vehicle;
+  saved: boolean;
+  onToggleSave: () => void;
+  imageSrc: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  const fallback =
+    'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=800&h=500&q=80&auto=format&fit=crop';
+
+  return (
+    <div
+      className="group rounded-xl overflow-hidden transition-all duration-200"
+      style={{
+        backgroundColor: 'var(--surface)',
+        border: '1px solid var(--border-subtle)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border-strong)';
+        e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.3)';
+        const img = e.currentTarget.querySelector('.card-image') as HTMLElement;
+        if (img) img.style.transform = 'scale(1.04)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border-subtle)';
+        e.currentTarget.style.boxShadow = 'none';
+        const img = e.currentTarget.querySelector('.card-image') as HTMLElement;
+        if (img) img.style.transform = 'scale(1)';
+      }}
+    >
+      {/* Image */}
+      <div
+        className="relative overflow-hidden"
+        style={{ aspectRatio: '16/10', backgroundColor: '#0F0F0F' }}
+      >
+        <img
+          src={imgError ? fallback : imageSrc}
+          alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+          className="card-image w-full h-full object-cover transition-transform duration-300"
+          loading="lazy"
+          onError={() => setImgError(true)}
+          crossOrigin="anonymous"
+        />
+        {/* Image count badge */}
+        {vehicle.images && vehicle.images.length > 1 && (
+          <span
+            className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-xs font-medium"
+            style={{
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            +{vehicle.images.length - 1} photos
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <h3
+            className="font-semibold text-sm truncate pr-2"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {vehicle.year} {vehicle.make} {vehicle.model}
+          </h3>
+          <button
+            onClick={onToggleSave}
+            className="shrink-0 transition-colors duration-150"
+            style={{ color: saved ? 'var(--amber)' : 'var(--text-secondary)' }}
+          >
+            <Heart size={18} fill={saved ? 'var(--amber)' : 'none'} />
+          </button>
+        </div>
+
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2"
+          style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}
+        >
+          {vehicle.grade && <span>Grade {vehicle.grade}</span>}
+          {vehicle.grade && <span>·</span>}
+          <span>{vehicle.mileage.toLocaleString()} km</span>
+          <span>·</span>
+          <span>{vehicle.fuel}</span>
+          <span>·</span>
+          <span>{vehicle.transmission}</span>
+        </div>
+
+        <div className="flex items-center justify-between mt-3">
+          <span className="text-price" style={{ color: 'var(--amber)' }}>
+            {vehicle.price > 0
+              ? `From $${vehicle.price.toLocaleString()}`
+              : 'Price on Request'}
+          </span>
+          <span
+            className="text-label"
+            style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}
+          >
+            CIF Mombasa
+          </span>
+        </div>
+
+        <div
+          className="flex items-center justify-between mt-3 pt-3"
+          style={{ borderTop: '1px solid var(--border-subtle)' }}
+        >
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+            {vehicle.supplierName}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: 'var(--success)' }}
+            />
+            <span
+              style={{
+                color: 'var(--success)',
+                fontSize: '0.75rem',
+                letterSpacing: '0.08em',
+              }}
+            >
+              Available
+            </span>
+          </div>
+        </div>
+
+        <Link
+          to={`/vehicle/${vehicle._id}`}
+          className="block mt-3 text-center py-2 rounded-md text-sm font-medium transition-all duration-150 hover:brightness-110"
+          style={{ backgroundColor: 'var(--amber-dim)', color: 'var(--amber)' }}
+        >
+          View Details
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── SelectFilter ────────────────────────────────────────────────────────────────
 function SelectFilter({
   label,
   value,
@@ -305,7 +783,10 @@ function SelectFilter({
 }) {
   return (
     <div>
-      <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>
+      <span
+        className="text-label block mb-1"
+        style={{ color: 'var(--text-secondary)' }}
+      >
         {label}
       </span>
       <div className="relative">
@@ -321,10 +802,16 @@ function SelectFilter({
         >
           <option value="">All</option>
           {options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
           ))}
         </select>
-        <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-secondary)' }} />
+        <ChevronDown
+          size={12}
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ color: 'var(--text-secondary)' }}
+        />
       </div>
     </div>
   );
