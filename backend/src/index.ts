@@ -27,6 +27,8 @@ interface CrawlState {
   added: number;
   skipped: number;
   failed: number;
+  totalLinks: number;      // NEW: total links collected in Phase 1
+  phase: 'idle' | 'collecting' | 'scraping' | 'done';  // NEW
   startedAt?: Date;
   finishedAt?: Date;
 }
@@ -37,6 +39,8 @@ const crawlState: CrawlState = {
   added: 0,
   skipped: 0,
   failed: 0,
+  totalLinks: 0,
+  phase: 'idle',
 };
 
 // ─── SSE clients for live log streaming ──────────────────────────────────────
@@ -44,7 +48,6 @@ const sseClients: express.Response[] = [];
 
 function broadcastLog(msg: string) {
   crawlState.logs.push(msg);
-  // Keep last 500 lines
   if (crawlState.logs.length > 500) crawlState.logs.shift();
 
   for (const client of sseClients) {
@@ -134,13 +137,20 @@ app.post('/api/crawl', async (req, res) => {
   }
 });
 
-// ─── API: bulk crawl (year >= minYear, all pages) ─────────────────────────────
+// ─── API: bulk crawl (optimised 2-phase) ──────────────────────────────────────
 /**
  * POST /api/crawl-batch
- * Body: { supplier: "STC Japan", minYear?: number }
+ * Body: {
+ *   supplier: "STC Japan",
+ *   minYear?: number,       // default 2024
+ *   concurrency?: number    // parallel scrapers, default 4 (max recommended: 6)
+ * }
  *
- * minYear defaults to 2025.
- * Runs in background; poll /api/crawl-status for progress.
+ * Phase 1 — Uses STC Japan's own from_year filter to collect all matching
+ *            URLs without visiting each detail page.
+ * Phase 2 — Scrapes collected URLs in parallel (configurable concurrency).
+ *
+ * Monitor progress at GET /api/crawl-status or stream GET /api/crawl-logs.
  */
 app.post('/api/crawl-batch', async (req, res) => {
   if (crawlState.running) {
@@ -149,11 +159,14 @@ app.post('/api/crawl-batch', async (req, res) => {
       .json({ error: 'A crawl is already running. Check /api/crawl-status.' });
   }
 
-  const { supplier, minYear = 2025 } = req.body;
+  const { supplier, minYear = 2024, concurrency = 4 } = req.body;
 
   if (supplier !== 'STC Japan') {
     return res.status(400).json({ error: 'Unsupported supplier' });
   }
+
+  // Clamp concurrency to safe range
+  const safeConc = Math.max(1, Math.min(concurrency, 8));
 
   // Reset state
   crawlState.running = true;
@@ -161,18 +174,22 @@ app.post('/api/crawl-batch', async (req, res) => {
   crawlState.added = 0;
   crawlState.skipped = 0;
   crawlState.failed = 0;
+  crawlState.totalLinks = 0;
+  crawlState.phase = 'collecting';
   crawlState.startedAt = new Date();
   crawlState.finishedAt = undefined;
 
   res.json({
-    message: `Batch scraping started for STC Japan — year >= ${minYear}. ` +
+    message:
+      `2-phase batch scrape started for STC Japan — year ≥ ${minYear}, ` +
+      `concurrency ${safeConc}. ` +
       `Stream logs at GET /api/crawl-logs or poll GET /api/crawl-status.`,
   });
 
   // ── Background task ──────────────────────────────────────────────────────
   (async () => {
     const parser = new STCJapanParser();
-    broadcastLog(`🚀 Starting crawl — year >= ${minYear}`);
+    broadcastLog(`🚀 Starting optimised 2-phase crawl — year ≥ ${minYear}, concurrency ${safeConc}`);
 
     try {
       await parser.scrapeAllByYear(
@@ -184,17 +201,27 @@ app.post('/api/crawl-batch', async (req, res) => {
         },
         (msg) => {
           broadcastLog(msg);
-          // Update counters from log messages
-          if (msg.includes('Duplicate')) crawlState.skipped++;
-          if (msg.includes('Failed') || msg.includes('❌')) crawlState.failed++;
-        }
+
+          // Track phase transitions
+          if (msg.includes('Phase 2')) crawlState.phase = 'scraping';
+
+          // Extract totalLinks from Phase 1 summary log
+          const linkMatch = msg.match(/(\d+) unique listing/);
+          if (linkMatch) crawlState.totalLinks = parseInt(linkMatch[1]);
+
+          // Count skips/failures
+          if (msg.includes('Duplicate') || msg.includes('⏭')) crawlState.skipped++;
+          if (msg.includes('Failed') || msg.includes('❌') || msg.includes('💥')) crawlState.failed++;
+        },
+        safeConc
       );
 
       const summary =
         `✅ Crawl finished — ` +
         `Added: ${crawlState.added}, ` +
-        `Skipped (dup): ${crawlState.skipped}, ` +
-        `Failed: ${crawlState.failed}`;
+        `Skipped/Dup: ${crawlState.skipped}, ` +
+        `Failed: ${crawlState.failed}, ` +
+        `Total links scraped: ${crawlState.totalLinks}`;
       broadcastLog(summary);
       console.log(summary);
     } catch (err: any) {
@@ -204,6 +231,7 @@ app.post('/api/crawl-batch', async (req, res) => {
     } finally {
       await parser.close();
       crawlState.running = false;
+      crawlState.phase = 'done';
       crawlState.finishedAt = new Date();
     }
   })();
@@ -214,18 +242,19 @@ app.post('/api/crawl-stop', (_req, res) => {
   if (!crawlState.running) {
     return res.json({ message: 'No crawl is running.' });
   }
-  // We flag running=false; the parser will finish its current item then stop
   crawlState.running = false;
-  res.json({ message: 'Stop signal sent. Current item will finish first.' });
+  res.json({ message: 'Stop signal sent. Current batch will finish first.' });
 });
 
 // ─── API: crawl status ────────────────────────────────────────────────────────
 app.get('/api/crawl-status', (_req, res) => {
   res.json({
     running: crawlState.running,
+    phase: crawlState.phase,
     added: crawlState.added,
     skipped: crawlState.skipped,
     failed: crawlState.failed,
+    totalLinks: crawlState.totalLinks,
     startedAt: crawlState.startedAt,
     finishedAt: crawlState.finishedAt,
     recentLogs: crawlState.logs.slice(-50),
@@ -239,7 +268,6 @@ app.get('/api/crawl-logs', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  // Send all existing logs immediately
   for (const line of crawlState.logs) {
     res.write(`data: ${JSON.stringify({ log: line })}\n\n`);
   }

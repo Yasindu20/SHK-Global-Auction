@@ -1,6 +1,8 @@
 import { Crawler } from './Crawler';
 
 export class STCJapanParser extends Crawler {
+
+  // ─── Scrape a single vehicle detail page ──────────────────────────────────
   async scrape(url: string): Promise<any> {
     if (!this.browser) await this.init();
     const context = await this.browser!.newContext({
@@ -10,10 +12,8 @@ export class STCJapanParser extends Crawler {
     const page = await context.newPage();
 
     try {
-      console.log(`Navigating to ${url}...`);
       await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
 
-      // Wait for main content
       try {
         await page.waitForSelector('table, .car-details, .vehicle-details, #content', {
           timeout: 20000,
@@ -22,8 +22,7 @@ export class STCJapanParser extends Crawler {
         console.warn(`Warning: Timeout waiting for content on ${url}`);
       }
 
-      // Extra wait for images / lazy-load
-      await this.wait(2000);
+      await this.wait(1500);
 
       const data = await page.evaluate(() => {
         // ── Helper: find table-cell value by label ────────────────────
@@ -35,10 +34,8 @@ export class STCJapanParser extends Crawler {
               td.textContent?.trim().toLowerCase().includes(label.toLowerCase())
           );
           if (!labelCell) return '';
-          // Try sibling TD first
           const next = labelCell.nextElementSibling;
           if (next) return next.textContent?.trim() ?? '';
-          // Try parent row's next TD
           const row = labelCell.closest('tr');
           if (row) {
             const tds = row.querySelectorAll('td');
@@ -47,12 +44,9 @@ export class STCJapanParser extends Crawler {
           return '';
         };
 
-        // ── Helper: parse number from string ─────────────────────────
         const parseNum = (s: string) => parseInt(s.replace(/[^0-9]/g, ''), 10) || 0;
-        const parseFloat2 = (s: string) =>
-          parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+        const parseFloat2 = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
 
-        // ── Core fields ───────────────────────────────────────────────
         const stockId =
           getTdValue('Stock ID') ||
           getTdValue('Stock Id') ||
@@ -63,8 +57,7 @@ export class STCJapanParser extends Crawler {
         const make =
           getTdValue('Make') || getTdValue('Brand') || getTdValue('Maker') || '';
 
-        const model =
-          getTdValue('Model') || getTdValue('Model Name') || '';
+        const model = getTdValue('Model') || getTdValue('Model Name') || '';
 
         if (!stockId && !make) return null;
 
@@ -75,11 +68,10 @@ export class STCJapanParser extends Crawler {
           '0';
         const year = parseNum(yearRaw);
 
-        // ── Images ────────────────────────────────────────────────────
-        // 1. Collect all img src / data-src attributes
+        // ── Image collection ─────────────────────────────────────────
         const allImgs = Array.from(document.querySelectorAll('img'));
-
         const imgUrls: string[] = [];
+
         for (const img of allImgs) {
           const candidates = [
             img.src,
@@ -92,7 +84,6 @@ export class STCJapanParser extends Crawler {
 
           for (const src of candidates) {
             if (!src || src.startsWith('data:')) continue;
-            // Exclude tiny icons / logos / flags
             const lower = src.toLowerCase();
             if (
               lower.includes('logo') ||
@@ -104,10 +95,8 @@ export class STCJapanParser extends Crawler {
               lower.includes('arrow') ||
               lower.includes('bg.') ||
               lower.includes('background')
-            )
-              continue;
+            ) continue;
 
-            // Accept if it looks like a photo
             if (
               lower.match(/\.(jpe?g|png|webp)(\?|$)/) ||
               lower.includes('stock_image') ||
@@ -125,7 +114,7 @@ export class STCJapanParser extends Crawler {
           }
         }
 
-        // 2. Also pull from anchor hrefs that look like images (lightbox links)
+        // Lightbox anchor hrefs
         const anchors = Array.from(document.querySelectorAll('a[href]'));
         for (const a of anchors) {
           const href = (a as HTMLAnchorElement).href;
@@ -134,26 +123,28 @@ export class STCJapanParser extends Crawler {
           }
         }
 
-        // 3. Also check background-image styles on divs
-        const divs = Array.from(
-          document.querySelectorAll('[style*="background"]')
-        );
+        // Background-image styles
+        const divs = Array.from(document.querySelectorAll('[style*="background"]'));
         for (const div of divs) {
           const style = (div as HTMLElement).style.backgroundImage;
           const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
           if (match) imgUrls.push(match[1]);
         }
 
-        // Deduplicate and take first 15
         const uniqueImgs = [...new Set(imgUrls)].slice(0, 15);
 
         return {
           stockId,
           make,
           model,
-          chassisNumber: getTdValue('Chassis NO.') || getTdValue('Chassis No') || getTdValue('Chassis'),
+          chassisNumber:
+            getTdValue('Chassis NO.') ||
+            getTdValue('Chassis No') ||
+            getTdValue('Chassis'),
           year,
-          mileage: parseNum(getTdValue('Mileage') || getTdValue('KM') || '0'),
+          mileage: parseNum(
+            getTdValue('Mileage') || getTdValue('KM') || '0'
+          ),
           transmission:
             getTdValue('Transmission') || getTdValue('Gear') || 'Automatic',
           fuel:
@@ -166,10 +157,12 @@ export class STCJapanParser extends Crawler {
             getTdValue('Color') ||
             getTdValue('Colour') ||
             '',
-          price:
-            parseFloat2(
-              getTdValue('Price') || getTdValue('FOB Price') || getTdValue('Amount') || '0'
-            ),
+          price: parseFloat2(
+            getTdValue('Price') ||
+            getTdValue('FOB Price') ||
+            getTdValue('Amount') ||
+            '0'
+          ),
           images: uniqueImgs,
         };
       });
@@ -193,10 +186,7 @@ export class STCJapanParser extends Crawler {
     }
   }
 
-  /**
-   * Returns listing links from a search result page.
-   * Also extracts year hints from link text so we can pre-filter.
-   */
+  // ─── Get listing links from ONE search-result page ────────────────────────
   async getListingLinks(
     baseUrl: string
   ): Promise<{ href: string; year?: number }[]> {
@@ -208,13 +198,12 @@ export class STCJapanParser extends Crawler {
 
     try {
       await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 60000 });
-      await this.wait(1500);
+      await this.wait(1000);
 
       const links = await page.evaluate(() => {
         const results: { href: string; year?: number }[] = [];
         const seen = new Set<string>();
 
-        // Broad selector – try multiple patterns STC Japan might use
         const anchors = Array.from(
           document.querySelectorAll(
             'a[href*="Car-Details"], a[href*="car-details"], a[href*="vehicle-details"], a[href*="detail"], a[href*="stock"]'
@@ -226,7 +215,6 @@ export class STCJapanParser extends Crawler {
           if (!href || seen.has(href)) continue;
           seen.add(href);
 
-          // Try to extract year from link text or nearby elements
           const text =
             a.textContent?.trim() ||
             a.closest('tr, .car-card, .vehicle-card')?.textContent ||
@@ -249,35 +237,40 @@ export class STCJapanParser extends Crawler {
     }
   }
 
+  // ─── Phase 1: Collect ALL listing links across ALL pages (year-filtered) ──
   /**
-   * Scrape ALL pages for year >= minYear.
-   * Stops when a page returns zero new links.
+   * Uses STC Japan's built-in from_year/to_year URL filter so only
+   * pre-filtered result pages are visited. Much faster than checking
+   * each car's year on the detail page.
    */
-  async scrapeAllByYear(
+  async getAllListingLinks(
     minYear: number,
-    onSave: (data: any) => Promise<void>,
     onLog?: (msg: string) => void
-  ): Promise<number> {
+  ): Promise<string[]> {
     const log = onLog ?? console.log;
+    const allHrefs: string[] = [];
+    const seen = new Set<string>();
     let page = 1;
-    let totalAdded = 0;
     let emptyPages = 0;
 
+    log(`🔍 Phase 1 — Collecting links (STC Japan filter: year ≥ ${minYear})…`);
+
     while (true) {
+      // STC Japan's own search filter does the year restriction for us
       const listUrl =
         `https://stcjapan.net/search.php?` +
         `make=&model=&fuel=&transmission=&category=&color=` +
         `&from_year=${minYear}&to_year=&page=${page}&searchy=Search+Now%21`;
 
-      log(`📄 Scraping page ${page} — URL: ${listUrl}`);
+      log(`   📄 Page ${page} — ${listUrl}`);
 
       const links = await this.getListingLinks(listUrl);
-      log(`   Found ${links.length} links on page ${page}`);
+      log(`      → ${links.length} link(s) found`);
 
       if (links.length === 0) {
         emptyPages++;
         if (emptyPages >= 2) {
-          log(`No links on page ${page}. Stopping.`);
+          log(`   🛑 Two consecutive empty pages — collection complete.`);
           break;
         }
         page++;
@@ -286,52 +279,102 @@ export class STCJapanParser extends Crawler {
 
       emptyPages = 0;
 
-      for (const { href, year: hintYear } of links) {
-        // Pre-filter by year hint (fast path – avoids full page load)
-        if (hintYear !== undefined && hintYear < minYear) {
-          log(`   ⏭  Skipping ${href} — year hint ${hintYear} < ${minYear}`);
-          continue;
-        }
-
-        // Polite delay between requests
-        await this.wait(1500 + Math.random() * 1000);
-
-        const data = await this.scrape(href);
-        if (!data) {
-          log(`   ⚠  Failed to scrape ${href}`);
-          continue;
-        }
-
-        // Double-check year from full scrape
-        if (data.year > 0 && data.year < minYear) {
-          log(`   ⏭  Skipping ${data.make} ${data.model} ${data.year} — below ${minYear}`);
-          continue;
-        }
-
-        if (!data.stockId || !data.make) {
-          log(`   ⚠  Missing stockId/make — skipping`);
-          continue;
-        }
-
-        try {
-          await onSave(data);
-          totalAdded++;
-          log(
-            `   ✅ Saved: ${data.year} ${data.make} ${data.model} ` +
-            `(${data.stockId}) — ${data.images.length} image(s)`
-          );
-        } catch (err: any) {
-          if (err.code === 11000) {
-            log(`   🔁 Duplicate — skipping ${data.stockId}`);
-          } else {
-            log(`   ❌ Save error: ${err.message}`);
-          }
+      for (const { href } of links) {
+        if (!seen.has(href)) {
+          seen.add(href);
+          allHrefs.push(href);
         }
       }
 
+      log(`      Cumulative unique links: ${allHrefs.length}`);
       page++;
+
+      // Short polite delay between list pages (faster than full detail-page delay)
+      await this.wait(800 + Math.random() * 400);
     }
 
+    log(`✅ Phase 1 complete — ${allHrefs.length} unique listing(s) to scrape.`);
+    return allHrefs;
+  }
+
+  // ─── Phase 2: Parallel detail-page scraping with concurrency pool ─────────
+  /**
+   * Runs `concurrency` detail-page scrapers simultaneously.
+   * Default concurrency = 4 (safe for most servers; raise carefully).
+   */
+  async scrapeAllByYear(
+    minYear: number,
+    onSave: (data: any) => Promise<void>,
+    onLog?: (msg: string) => void,
+    concurrency = 4
+  ): Promise<number> {
+    const log = onLog ?? console.log;
+    log(`🚀 Starting optimised 2-phase crawl — year ≥ ${minYear}, concurrency ${concurrency}`);
+
+    // ── Phase 1: collect every URL that STC Japan already filtered ──────────
+    const hrefs = await this.getAllListingLinks(minYear, log);
+    if (hrefs.length === 0) {
+      log('⚠  No listings found. Check the search URL or minYear value.');
+      return 0;
+    }
+
+    // ── Phase 2: parallel detail scraping ───────────────────────────────────
+    log(`\n⚡ Phase 2 — Scraping ${hrefs.length} detail page(s) with concurrency ${concurrency}…`);
+
+    let totalAdded = 0;
+    let processed = 0;
+    const total = hrefs.length;
+
+    const scrapeOne = async (href: string): Promise<void> => {
+      // Stagger start times within each concurrency batch to be polite
+      await this.wait(300 + Math.random() * 700);
+
+      const data = await this.scrape(href);
+      processed++;
+      const progress = `[${processed}/${total}]`;
+
+      if (!data) {
+        log(`   ⚠  ${progress} Failed: ${href}`);
+        return;
+      }
+
+      // Secondary year guard (in case the site filter returned a stray record)
+      if (data.year > 0 && data.year < minYear) {
+        log(`   ⏭  ${progress} Year ${data.year} below ${minYear} — skipped`);
+        return;
+      }
+
+      if (!data.stockId || !data.make) {
+        log(`   ⚠  ${progress} Missing stockId/make — skipped`);
+        return;
+      }
+
+      try {
+        await onSave(data);
+        totalAdded++;
+        log(
+          `   ✅ ${progress} Saved: ${data.year} ${data.make} ${data.model}` +
+          ` (${data.stockId}) — ${data.images.length} image(s)`
+        );
+      } catch (err: any) {
+        if (err.code === 11000) {
+          log(`   🔁 ${progress} Duplicate — ${data.stockId}`);
+        } else {
+          log(`   ❌ ${progress} Save error: ${err.message}`);
+        }
+      }
+    };
+
+    // Run in batches of `concurrency` at a time
+    for (let i = 0; i < hrefs.length; i += concurrency) {
+      const batch = hrefs.slice(i, i + concurrency);
+      await Promise.all(batch.map(scrapeOne));
+      log(`   📊 Batch ${Math.ceil((i + 1) / concurrency)} done — added so far: ${totalAdded}`);
+    }
+
+    log(
+      `\n🏁 Crawl complete — Added: ${totalAdded} | Duplicates/skipped: ${processed - totalAdded} | Total processed: ${processed}`
+    );
     return totalAdded;
   }
 }
