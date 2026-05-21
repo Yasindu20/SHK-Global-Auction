@@ -1,16 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Search, ChevronDown, SlidersHorizontal, X, RefreshCw, Loader2, CheckCircle, AlertCircle, ChevronUp } from 'lucide-react';
+import {
+  Heart,
+  Search,
+  ChevronDown,
+  SlidersHorizontal,
+  X,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  ChevronUp,
+  Database,
+  Zap,
+} from 'lucide-react';
 import { type Vehicle } from '../data/vehicles';
 import Footer from '../sections/Footer';
 
 const API = 'http://localhost:5000';
 
+// ─── Year range config — change these to adjust what gets scraped ─────────────
+const SCRAPE_MIN_YEAR = 2024;
+const SCRAPE_MAX_YEAR = 2026;
+const SCRAPE_CONCURRENCY = 6; // safe for ~18 pages; raise to 8 max if needed
+
 interface CrawlStatus {
   running: boolean;
+  phase: 'idle' | 'collecting' | 'scraping' | 'done';
   added: number;
   skipped: number;
   failed: number;
+  totalLinks: number;
+  minYear: number;
+  maxYear: number;
   startedAt?: string;
   finishedAt?: string;
   recentLogs: string[];
@@ -18,25 +39,25 @@ interface CrawlStatus {
 
 export default function Inventory() {
   const gridRef = useRef<HTMLDivElement>(null);
-  const logRef = useRef<HTMLDivElement>(null);
+  const logRef  = useRef<HTMLDivElement>(null);
 
-  const [search, setSearch] = useState('');
-  const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
+  const [search, setSearch]             = useState('');
+  const [allVehicles, setAllVehicles]   = useState<Vehicle[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [showFilters, setShowFilters]   = useState(false);
   const [showCrawlPanel, setShowCrawlPanel] = useState(false);
-  const [crawlStatus, setCrawlStatus] = useState<CrawlStatus | null>(null);
-  const [scrapeMsg, setScrapeMsg] = useState('');
+  const [crawlStatus, setCrawlStatus]   = useState<CrawlStatus | null>(null);
+  const [scrapeMsg, setScrapeMsg]       = useState('');
 
   const [filters, setFilters] = useState({
-    make: '',
-    yearMin: '',
-    yearMax: '',
-    priceMin: '',
-    priceMax: '',
-    mileageMax: '',
-    transmission: '',
-    fuel: '',
+    make:        '',
+    yearMin:     '',
+    yearMax:     '',
+    priceMin:    '',
+    priceMax:    '',
+    mileageMax:  '',
+    transmission:'',
+    fuel:        '',
   });
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
@@ -45,14 +66,14 @@ export default function Inventory() {
     const q = search.toLowerCase();
     if (search && !`${v.make} ${v.model} ${v.chassisNumber ?? ''}`.toLowerCase().includes(q))
       return false;
-    if (filters.make && v.make !== filters.make) return false;
-    if (filters.transmission && v.transmission !== filters.transmission) return false;
-    if (filters.fuel && v.fuel !== filters.fuel) return false;
-    if (filters.yearMin && v.year < parseInt(filters.yearMin)) return false;
-    if (filters.yearMax && v.year > parseInt(filters.yearMax)) return false;
-    if (filters.priceMin && v.price < parseInt(filters.priceMin)) return false;
-    if (filters.priceMax && v.price > parseInt(filters.priceMax)) return false;
-    if (filters.mileageMax && v.mileage > parseInt(filters.mileageMax)) return false;
+    if (filters.make         && v.make         !== filters.make)              return false;
+    if (filters.transmission && v.transmission !== filters.transmission)       return false;
+    if (filters.fuel         && v.fuel         !== filters.fuel)              return false;
+    if (filters.yearMin      && v.year         <  parseInt(filters.yearMin))  return false;
+    if (filters.yearMax      && v.year         >  parseInt(filters.yearMax))  return false;
+    if (filters.priceMin     && v.price        <  parseInt(filters.priceMin)) return false;
+    if (filters.priceMax     && v.price        >  parseInt(filters.priceMax)) return false;
+    if (filters.mileageMax   && v.mileage      >  parseInt(filters.mileageMax)) return false;
     return true;
   });
 
@@ -62,7 +83,7 @@ export default function Inventory() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/listings`);
+      const res  = await fetch(`${API}/api/listings`);
       const data = await res.json();
       setAllVehicles(data);
     } catch (e) {
@@ -75,7 +96,7 @@ export default function Inventory() {
   // ── Fetch crawl status ────────────────────────────────────────────────────────
   const fetchCrawlStatus = async () => {
     try {
-      const res = await fetch(`${API}/api/crawl-status`);
+      const res  = await fetch(`${API}/api/crawl-status`);
       const data = await res.json();
       setCrawlStatus(data);
     } catch {
@@ -83,19 +104,16 @@ export default function Inventory() {
     }
   };
 
-  // ── Poll crawl status while running ──────────────────────────────────────────
   useEffect(() => {
     fetchVehicles();
     fetchCrawlStatus();
     window.scrollTo(0, 0);
   }, []);
 
+  // Poll while running
   useEffect(() => {
     if (!crawlStatus?.running) return;
-    const interval = setInterval(async () => {
-      await fetchCrawlStatus();
-      // Refresh inventory every 20 s while scraping
-    }, 4000);
+    const interval = setInterval(fetchCrawlStatus, 3000);
     return () => clearInterval(interval);
   }, [crawlStatus?.running]);
 
@@ -120,9 +138,14 @@ export default function Inventory() {
     setScrapeMsg('');
     try {
       const res = await fetch(`${API}/api/crawl-batch`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supplier: 'STC Japan', minYear: 2025 }),
+        body: JSON.stringify({
+          supplier:    'STC Japan',
+          minYear:     SCRAPE_MIN_YEAR,
+          maxYear:     SCRAPE_MAX_YEAR,      // ← now passed to backend
+          concurrency: SCRAPE_CONCURRENCY,   // ← 6 instead of 4
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -157,6 +180,21 @@ export default function Inventory() {
     return `https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=800&h=500&q=80&auto=format&fit=crop`;
   };
 
+  // ── Phase label helpers ───────────────────────────────────────────────────────
+  const phaseLabel = (phase: CrawlStatus['phase']) => {
+    if (phase === 'collecting') return '📡 Phase 1 — Collecting links…';
+    if (phase === 'scraping')   return '⚡ Phase 2 — Scraping details…';
+    if (phase === 'done')       return '✅ Complete';
+    return 'Idle';
+  };
+
+  const phaseColor = (phase: CrawlStatus['phase']) => {
+    if (phase === 'collecting') return 'var(--amber)';
+    if (phase === 'scraping')   return '#60a5fa';
+    if (phase === 'done')       return 'var(--success)';
+    return 'var(--text-secondary)';
+  };
+
   return (
     <div style={{ backgroundColor: 'var(--bg)' }}>
       {/* ── Header ─────────────────────────────────────────────────────────────── */}
@@ -169,13 +207,13 @@ export default function Inventory() {
               </h1>
               <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
                 {loading
-                  ? 'Loading...'
+                  ? 'Loading…'
                   : `${allVehicles.length} approved vehicles from Japanese auctions.`}
               </p>
             </div>
 
             {/* Scrape controls */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {crawlStatus?.running && (
                 <button
                   onClick={stopScrape}
@@ -199,7 +237,7 @@ export default function Inventory() {
                 }}
               >
                 {showCrawlPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                Crawl Status
+                Crawl Monitor
               </button>
               <button
                 onClick={fetchVehicles}
@@ -221,18 +259,20 @@ export default function Inventory() {
               >
                 {crawlStatus?.running ? (
                   <>
-                    <Loader2 size={14} className="animate-spin" /> Scraping…
+                    <Loader2 size={14} className="animate-spin" />
+                    {crawlStatus.phase === 'collecting' ? 'Collecting links…' : 'Scraping…'}
                   </>
                 ) : (
                   <>
-                    <RefreshCw size={14} /> Scrape STC Japan (2025+)
+                    <Zap size={14} />
+                    Scrape STC Japan ({SCRAPE_MIN_YEAR}–{SCRAPE_MAX_YEAR})
                   </>
                 )}
               </button>
             </div>
           </div>
 
-          {/* ── Crawl status panel ──────────────────────────────────────────────── */}
+          {/* ── Crawl monitor panel ─────────────────────────────────────────────── */}
           {showCrawlPanel && (
             <div
               className="mt-4 rounded-xl p-4"
@@ -241,50 +281,140 @@ export default function Inventory() {
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  Crawl Monitor
-                </span>
-                {crawlStatus?.running ? (
+              {/* Panel header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Crawl Monitor
+                  </span>
+                  {crawlStatus && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{
+                        backgroundColor: 'var(--amber-dim)',
+                        color: 'var(--amber)',
+                      }}
+                    >
+                      {crawlStatus.minYear ?? SCRAPE_MIN_YEAR}–
+                      {crawlStatus.maxYear ?? SCRAPE_MAX_YEAR}
+                    </span>
+                  )}
+                </div>
+                {crawlStatus && (
                   <span
-                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
                     style={{
-                      backgroundColor: 'rgba(212,168,83,0.15)',
-                      color: 'var(--amber)',
+                      backgroundColor: `${phaseColor(crawlStatus.phase)}22`,
+                      color: phaseColor(crawlStatus.phase),
+                      border: `1px solid ${phaseColor(crawlStatus.phase)}44`,
                     }}
                   >
-                    <Loader2 size={10} className="animate-spin" /> Running
-                  </span>
-                ) : crawlStatus?.finishedAt ? (
-                  <span
-                    className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
-                    style={{
-                      backgroundColor: 'rgba(74,222,128,0.15)',
-                      color: 'var(--success)',
-                    }}
-                  >
-                    <CheckCircle size={10} /> Done
-                  </span>
-                ) : (
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    Idle
+                    {crawlStatus.running && (
+                      <Loader2 size={10} className="animate-spin" />
+                    )}
+                    {phaseLabel(crawlStatus.phase)}
                   </span>
                 )}
               </div>
+
+              {/* Two-phase visual */}
+              {crawlStatus && (
+                <div className="flex gap-3 mb-4">
+                  {/* Phase 1 card */}
+                  <div
+                    className="flex-1 rounded-lg p-3"
+                    style={{
+                      backgroundColor:
+                        crawlStatus.phase === 'collecting'
+                          ? 'rgba(212,168,83,0.08)'
+                          : 'var(--surface-light)',
+                      border: `1px solid ${
+                        crawlStatus.phase === 'collecting'
+                          ? 'rgba(212,168,83,0.3)'
+                          : 'var(--border-subtle)'
+                      }`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Database size={13} style={{ color: 'var(--amber)' }} />
+                      <span
+                        className="text-xs font-medium"
+                        style={{ color: 'var(--amber)' }}
+                      >
+                        Phase 1 — Link Collection
+                      </span>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      Server-filtered by year — no detail pages visited
+                    </p>
+                    {crawlStatus.totalLinks > 0 && (
+                      <p
+                        className="mt-1 font-bold text-sm"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {crawlStatus.totalLinks} listings found
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Arrow */}
+                  <div
+                    className="flex items-center"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    →
+                  </div>
+
+                  {/* Phase 2 card */}
+                  <div
+                    className="flex-1 rounded-lg p-3"
+                    style={{
+                      backgroundColor:
+                        crawlStatus.phase === 'scraping'
+                          ? 'rgba(96,165,250,0.08)'
+                          : 'var(--surface-light)',
+                      border: `1px solid ${
+                        crawlStatus.phase === 'scraping'
+                          ? 'rgba(96,165,250,0.3)'
+                          : 'var(--border-subtle)'
+                      }`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap size={13} style={{ color: '#60a5fa' }} />
+                      <span
+                        className="text-xs font-medium"
+                        style={{ color: '#60a5fa' }}
+                      >
+                        Phase 2 — Parallel Scrape
+                      </span>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {SCRAPE_CONCURRENCY} concurrent scrapers — detail pages only
+                    </p>
+                    {crawlStatus.phase === 'scraping' && (
+                      <p
+                        className="mt-1 font-bold text-sm"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {crawlStatus.added} saved so far
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Stats row */}
               {crawlStatus && (
                 <div className="flex gap-6 mb-3">
                   {[
-                    { label: 'Added', value: crawlStatus.added, color: 'var(--success)' },
-                    { label: 'Duplicates', value: crawlStatus.skipped, color: 'var(--text-secondary)' },
-                    { label: 'Failed', value: crawlStatus.failed, color: '#ef4444' },
+                    { label: 'Added',       value: crawlStatus.added,      color: 'var(--success)' },
+                    { label: 'Links found', value: crawlStatus.totalLinks,  color: 'var(--amber)' },
+                    { label: 'Duplicates',  value: crawlStatus.skipped,     color: 'var(--text-secondary)' },
+                    { label: 'Failed',      value: crawlStatus.failed,      color: '#ef4444' },
                   ].map((s) => (
                     <div key={s.label}>
-                      <span
-                        className="text-xl font-bold"
-                        style={{ color: s.color }}
-                      >
+                      <span className="text-xl font-bold" style={{ color: s.color }}>
                         {s.value}
                       </span>
                       <span
@@ -298,6 +428,37 @@ export default function Inventory() {
                 </div>
               )}
 
+              {/* Progress bar (Phase 2 only) */}
+              {crawlStatus &&
+                crawlStatus.totalLinks > 0 &&
+                crawlStatus.phase === 'scraping' && (
+                  <div className="mb-3">
+                    <div
+                      className="h-1.5 rounded-full overflow-hidden"
+                      style={{ backgroundColor: 'var(--surface-light)' }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(
+                            ((crawlStatus.added +
+                              crawlStatus.skipped +
+                              crawlStatus.failed) /
+                              crawlStatus.totalLinks) *
+                              100,
+                            100
+                          )}%`,
+                          backgroundColor: '#60a5fa',
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      {crawlStatus.added + crawlStatus.skipped + crawlStatus.failed} /{' '}
+                      {crawlStatus.totalLinks} processed
+                    </p>
+                  </div>
+                )}
+
               {/* Log output */}
               <div
                 ref={logRef}
@@ -309,12 +470,12 @@ export default function Inventory() {
                   color: '#8A8279',
                 }}
               >
-                {crawlStatus?.recentLogs.length === 0 ? (
+                {!crawlStatus?.recentLogs?.length ? (
                   <span style={{ color: 'var(--text-secondary)' }}>
                     No logs yet. Start a crawl to see output here.
                   </span>
                 ) : (
-                  crawlStatus?.recentLogs.map((line, i) => (
+                  crawlStatus.recentLogs.map((line, i) => (
                     <div
                       key={i}
                       style={{
@@ -322,9 +483,14 @@ export default function Inventory() {
                           ? '#4ade80'
                           : line.includes('❌') || line.includes('💥')
                           ? '#ef4444'
-                          : line.includes('⏭')
+                          : line.includes('⏭') || line.includes('🔁')
                           ? '#6b7280'
-                          : line.includes('🚀') || line.includes('📄')
+                          : line.includes('Phase 2') || line.includes('⚡')
+                          ? '#60a5fa'
+                          : line.includes('🚀') ||
+                            line.includes('📄') ||
+                            line.includes('Phase 1') ||
+                            line.includes('🔍')
                           ? 'var(--amber)'
                           : '#8A8279',
                       }}
@@ -446,10 +612,8 @@ export default function Inventory() {
                 <input
                   type="number"
                   value={filters.yearMin}
-                  onChange={(e) =>
-                    setFilters((p) => ({ ...p, yearMin: e.target.value }))
-                  }
-                  placeholder="2025"
+                  onChange={(e) => setFilters((p) => ({ ...p, yearMin: e.target.value }))}
+                  placeholder={String(SCRAPE_MIN_YEAR)}
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
                   style={{
                     backgroundColor: 'var(--surface-light)',
@@ -468,10 +632,8 @@ export default function Inventory() {
                 <input
                   type="number"
                   value={filters.yearMax}
-                  onChange={(e) =>
-                    setFilters((p) => ({ ...p, yearMax: e.target.value }))
-                  }
-                  placeholder="2026"
+                  onChange={(e) => setFilters((p) => ({ ...p, yearMax: e.target.value }))}
+                  placeholder={String(SCRAPE_MAX_YEAR)}
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
                   style={{
                     backgroundColor: 'var(--surface-light)',
@@ -490,9 +652,7 @@ export default function Inventory() {
                 <input
                   type="number"
                   value={filters.priceMax}
-                  onChange={(e) =>
-                    setFilters((p) => ({ ...p, priceMax: e.target.value }))
-                  }
+                  onChange={(e) => setFilters((p) => ({ ...p, priceMax: e.target.value }))}
                   placeholder="100000"
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
                   style={{
@@ -512,9 +672,7 @@ export default function Inventory() {
                 <input
                   type="number"
                   value={filters.mileageMax}
-                  onChange={(e) =>
-                    setFilters((p) => ({ ...p, mileageMax: e.target.value }))
-                  }
+                  onChange={(e) => setFilters((p) => ({ ...p, mileageMax: e.target.value }))}
                   placeholder="100000"
                   className="w-full px-3 py-2 rounded-md text-sm outline-none"
                   style={{
@@ -534,14 +692,14 @@ export default function Inventory() {
                 <button
                   onClick={() =>
                     setFilters({
-                      make: '',
-                      yearMin: '',
-                      yearMax: '',
-                      priceMin: '',
-                      priceMax: '',
-                      mileageMax: '',
+                      make:         '',
+                      yearMin:      '',
+                      yearMax:      '',
+                      priceMin:     '',
+                      priceMax:     '',
+                      mileageMax:   '',
                       transmission: '',
-                      fuel: '',
+                      fuel:         '',
                     })
                   }
                   className="text-sm"
@@ -559,14 +717,19 @@ export default function Inventory() {
       <div className="container-main py-8">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <Loader2 size={32} className="animate-spin" style={{ color: 'var(--amber)' }} />
+            <Loader2
+              size={32}
+              className="animate-spin"
+              style={{ color: 'var(--amber)' }}
+            />
             <p style={{ color: 'var(--text-secondary)' }}>Loading inventory…</p>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between mb-6">
               <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                {filteredVehicles.length} vehicle{filteredVehicles.length !== 1 ? 's' : ''} found
+                {filteredVehicles.length} vehicle
+                {filteredVehicles.length !== 1 ? 's' : ''} found
               </span>
             </div>
 
@@ -589,7 +752,7 @@ export default function Inventory() {
               <div className="text-center py-20">
                 <p className="text-h4" style={{ color: 'var(--text-secondary)' }}>
                   {allVehicles.length === 0
-                    ? 'No vehicles in the database yet. Click "Scrape STC Japan" to import data.'
+                    ? `No vehicles yet. Click "Scrape STC Japan (${SCRAPE_MIN_YEAR}–${SCRAPE_MAX_YEAR})" to import data.`
                     : 'No vehicles match your filters.'}
                 </p>
                 {allVehicles.length > 0 && (
@@ -597,14 +760,14 @@ export default function Inventory() {
                     onClick={() => {
                       setSearch('');
                       setFilters({
-                        make: '',
-                        yearMin: '',
-                        yearMax: '',
-                        priceMin: '',
-                        priceMax: '',
-                        mileageMax: '',
+                        make:         '',
+                        yearMin:      '',
+                        yearMax:      '',
+                        priceMin:     '',
+                        priceMax:     '',
+                        mileageMax:   '',
                         transmission: '',
-                        fuel: '',
+                        fuel:         '',
                       });
                     }}
                     className="mt-4 inline-block font-medium"
@@ -649,19 +812,18 @@ function VehicleCard({
         border: '1px solid var(--border-subtle)',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border-strong)';
-        e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.3)';
+        e.currentTarget.style.borderColor  = 'var(--border-strong)';
+        e.currentTarget.style.boxShadow    = '0 8px 32px rgba(0,0,0,0.3)';
         const img = e.currentTarget.querySelector('.card-image') as HTMLElement;
         if (img) img.style.transform = 'scale(1.04)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border-subtle)';
-        e.currentTarget.style.boxShadow = 'none';
+        e.currentTarget.style.borderColor  = 'var(--border-subtle)';
+        e.currentTarget.style.boxShadow    = 'none';
         const img = e.currentTarget.querySelector('.card-image') as HTMLElement;
         if (img) img.style.transform = 'scale(1)';
       }}
     >
-      {/* Image */}
       <div
         className="relative overflow-hidden"
         style={{ aspectRatio: '16/10', backgroundColor: '#0F0F0F' }}
@@ -674,7 +836,6 @@ function VehicleCard({
           onError={() => setImgError(true)}
           crossOrigin="anonymous"
         />
-        {/* Image count badge */}
         {vehicle.images && vehicle.images.length > 1 && (
           <span
             className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-xs font-medium"
@@ -688,7 +849,6 @@ function VehicleCard({
         )}
       </div>
 
-      {/* Content */}
       <div className="p-4">
         <div className="flex items-start justify-between">
           <h3

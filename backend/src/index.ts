@@ -11,9 +11,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI =
-  process.env.MONGODB_URI || 'mongodb://localhost:27017/car_auction';
+const PORT        = process.env.PORT || 5000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/car_auction';
 
 mongoose
   .connect(MONGODB_URI)
@@ -27,16 +26,24 @@ interface CrawlState {
   added: number;
   skipped: number;
   failed: number;
+  totalLinks: number;
+  phase: 'idle' | 'collecting' | 'scraping' | 'done';
+  minYear: number;
+  maxYear: number;
   startedAt?: Date;
   finishedAt?: Date;
 }
 
 const crawlState: CrawlState = {
-  running: false,
-  logs: [],
-  added: 0,
-  skipped: 0,
-  failed: 0,
+  running:    false,
+  logs:       [],
+  added:      0,
+  skipped:    0,
+  failed:     0,
+  totalLinks: 0,
+  phase:      'idle',
+  minYear:    2024,
+  maxYear:    2026,
 };
 
 // ─── SSE clients for live log streaming ──────────────────────────────────────
@@ -44,7 +51,6 @@ const sseClients: express.Response[] = [];
 
 function broadcastLog(msg: string) {
   crawlState.logs.push(msg);
-  // Keep last 500 lines
   if (crawlState.logs.length > 500) crawlState.logs.shift();
 
   for (const client of sseClients) {
@@ -57,16 +63,22 @@ function broadcastLog(msg: string) {
 }
 
 // ─── API: listings ────────────────────────────────────────────────────────────
-app.get('/api/listings', async (req, res) => {
-  const listings = await Listing.find({ status: 'approved' }).sort({
-    timestamp: -1,
-  });
-  res.json(listings);
+app.get('/api/listings', async (_req, res) => {
+  try {
+    const listings = await Listing.find({ status: 'approved' }).sort({ timestamp: -1 });
+    res.json(listings);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch listings' });
+  }
 });
 
-app.get('/api/listings/all', async (req, res) => {
-  const listings = await Listing.find().sort({ timestamp: -1 });
-  res.json(listings);
+app.get('/api/listings/all', async (_req, res) => {
+  try {
+    const listings = await Listing.find().sort({ timestamp: -1 });
+    res.json(listings);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch listings' });
+  }
 });
 
 app.get('/api/listings/:id', async (req, res) => {
@@ -111,7 +123,7 @@ app.post('/api/crawl', async (req, res) => {
 
   if (supplier === 'STC Japan') {
     const parser = new STCJapanParser();
-    const data = await parser.scrape(url);
+    const data   = await parser.scrape(url);
     await parser.close();
 
     if (data) {
@@ -134,13 +146,22 @@ app.post('/api/crawl', async (req, res) => {
   }
 });
 
-// ─── API: bulk crawl (year >= minYear, all pages) ─────────────────────────────
+// ─── API: bulk crawl (optimised 2-phase) ──────────────────────────────────────
 /**
  * POST /api/crawl-batch
- * Body: { supplier: "STC Japan", minYear?: number }
+ * Body: {
+ *   supplier:     "STC Japan",
+ *   minYear?:     number,   // default 2024
+ *   maxYear?:     number,   // default current year + 1  ← NEW
+ *   concurrency?: number    // parallel scrapers, default 6  ← raised from 4
+ * }
  *
- * minYear defaults to 2025.
- * Runs in background; poll /api/crawl-status for progress.
+ * Phase 1 — Uses STC Japan's from_year + to_year filter so the server
+ *            returns only the matching vehicles (≈18 for 2024–2026).
+ *            No unnecessary pages are visited.
+ * Phase 2 — Scrapes only those filtered URLs in parallel.
+ *
+ * Monitor progress at GET /api/crawl-status or stream GET /api/crawl-logs.
  */
 app.post('/api/crawl-batch', async (req, res) => {
   if (crawlState.running) {
@@ -149,34 +170,51 @@ app.post('/api/crawl-batch', async (req, res) => {
       .json({ error: 'A crawl is already running. Check /api/crawl-status.' });
   }
 
-  const { supplier, minYear = 2025 } = req.body;
+  const {
+    supplier,
+    minYear     = 2024,
+    maxYear     = new Date().getFullYear() + 1,
+    concurrency = 6,   // raised default: with ~18 pages, 6 is safe & fast
+  } = req.body;
 
   if (supplier !== 'STC Japan') {
     return res.status(400).json({ error: 'Unsupported supplier' });
   }
 
+  // Clamp concurrency to safe range
+  const safeConc = Math.max(1, Math.min(concurrency, 8));
+
   // Reset state
-  crawlState.running = true;
-  crawlState.logs = [];
-  crawlState.added = 0;
-  crawlState.skipped = 0;
-  crawlState.failed = 0;
-  crawlState.startedAt = new Date();
+  crawlState.running    = true;
+  crawlState.logs       = [];
+  crawlState.added      = 0;
+  crawlState.skipped    = 0;
+  crawlState.failed     = 0;
+  crawlState.totalLinks = 0;
+  crawlState.phase      = 'collecting';
+  crawlState.minYear    = minYear;
+  crawlState.maxYear    = maxYear;
+  crawlState.startedAt  = new Date();
   crawlState.finishedAt = undefined;
 
   res.json({
-    message: `Batch scraping started for STC Japan — year >= ${minYear}. ` +
+    message:
+      `2-phase batch scrape started for STC Japan — ` +
+      `year ${minYear}–${maxYear}, concurrency ${safeConc}. ` +
       `Stream logs at GET /api/crawl-logs or poll GET /api/crawl-status.`,
   });
 
   // ── Background task ──────────────────────────────────────────────────────
   (async () => {
     const parser = new STCJapanParser();
-    broadcastLog(`🚀 Starting crawl — year >= ${minYear}`);
+    broadcastLog(
+      `🚀 Starting optimised 2-phase crawl — year ${minYear}–${maxYear}, concurrency ${safeConc}`
+    );
 
     try {
       await parser.scrapeAllByYear(
         minYear,
+        maxYear,
         async (data) => {
           const listing = new Listing({ ...data, status: 'approved' });
           await listing.save();
@@ -184,17 +222,28 @@ app.post('/api/crawl-batch', async (req, res) => {
         },
         (msg) => {
           broadcastLog(msg);
-          // Update counters from log messages
-          if (msg.includes('Duplicate')) crawlState.skipped++;
-          if (msg.includes('Failed') || msg.includes('❌')) crawlState.failed++;
-        }
+
+          // Track phase transitions
+          if (msg.includes('Phase 2')) crawlState.phase = 'scraping';
+
+          // Extract totalLinks from Phase 1 summary log
+          const linkMatch = msg.match(/(\d+) unique listing/);
+          if (linkMatch) crawlState.totalLinks = parseInt(linkMatch[1]);
+
+          // Count skips / failures
+          if (msg.includes('Duplicate') || msg.includes('⏭')) crawlState.skipped++;
+          if (msg.includes('Failed') || msg.includes('❌') || msg.includes('💥'))
+            crawlState.failed++;
+        },
+        safeConc
       );
 
       const summary =
         `✅ Crawl finished — ` +
         `Added: ${crawlState.added}, ` +
-        `Skipped (dup): ${crawlState.skipped}, ` +
-        `Failed: ${crawlState.failed}`;
+        `Skipped/Dup: ${crawlState.skipped}, ` +
+        `Failed: ${crawlState.failed}, ` +
+        `Total links scraped: ${crawlState.totalLinks}`;
       broadcastLog(summary);
       console.log(summary);
     } catch (err: any) {
@@ -203,7 +252,8 @@ app.post('/api/crawl-batch', async (req, res) => {
       console.error(msg);
     } finally {
       await parser.close();
-      crawlState.running = false;
+      crawlState.running    = false;
+      crawlState.phase      = 'done';
       crawlState.finishedAt = new Date();
     }
   })();
@@ -214,19 +264,23 @@ app.post('/api/crawl-stop', (_req, res) => {
   if (!crawlState.running) {
     return res.json({ message: 'No crawl is running.' });
   }
-  // We flag running=false; the parser will finish its current item then stop
   crawlState.running = false;
-  res.json({ message: 'Stop signal sent. Current item will finish first.' });
+  broadcastLog('🛑 Stop signal received — finishing current batch then halting.');
+  res.json({ message: 'Stop signal sent. Current batch will finish first.' });
 });
 
 // ─── API: crawl status ────────────────────────────────────────────────────────
 app.get('/api/crawl-status', (_req, res) => {
   res.json({
-    running: crawlState.running,
-    added: crawlState.added,
-    skipped: crawlState.skipped,
-    failed: crawlState.failed,
-    startedAt: crawlState.startedAt,
+    running:    crawlState.running,
+    phase:      crawlState.phase,
+    added:      crawlState.added,
+    skipped:    crawlState.skipped,
+    failed:     crawlState.failed,
+    totalLinks: crawlState.totalLinks,
+    minYear:    crawlState.minYear,
+    maxYear:    crawlState.maxYear,
+    startedAt:  crawlState.startedAt,
     finishedAt: crawlState.finishedAt,
     recentLogs: crawlState.logs.slice(-50),
   });
@@ -234,12 +288,12 @@ app.get('/api/crawl-status', (_req, res) => {
 
 // ─── API: SSE live log stream ─────────────────────────────────────────────────
 app.get('/api/crawl-logs', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Content-Type',  'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Connection',    'keep-alive');
   res.flushHeaders();
 
-  // Send all existing logs immediately
+  // Replay buffered logs so a late-connecting client catches up
   for (const line of crawlState.logs) {
     res.write(`data: ${JSON.stringify({ log: line })}\n\n`);
   }
@@ -255,9 +309,9 @@ app.get('/api/crawl-logs', (req, res) => {
 // ─── API: stats ───────────────────────────────────────────────────────────────
 app.get('/api/stats', async (_req, res) => {
   try {
-    const total = await Listing.countDocuments();
+    const total    = await Listing.countDocuments();
     const approved = await Listing.countDocuments({ status: 'approved' });
-    const pending = await Listing.countDocuments({ status: 'pending' });
+    const pending  = await Listing.countDocuments({ status: 'pending' });
     const rejected = await Listing.countDocuments({ status: 'rejected' });
     res.json({ total, approved, pending, rejected });
   } catch {
