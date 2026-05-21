@@ -6,6 +6,7 @@ import Inventory from './pages/Inventory';
 import AdminReview from './pages/AdminReview';
 import VehicleDetail from './pages/VehicleDetail';
 import Dashboard from './pages/Dashboard';
+import Destinations from './pages/Destinations';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -23,6 +24,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/inventory" element={<Inventory />} />
+        <Route path="/destinations" element={<Destinations />} />
         <Route path="/vehicle/:id" element={<VehicleDetail />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin/review" element={<AdminReview />} />

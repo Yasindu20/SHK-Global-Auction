@@ -1,136 +1,134 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, ChevronDown } from 'lucide-react';
+import { Menu, X, Globe } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+const NAV_LINKS = [
+  { label: 'Home', href: '/' },
+  { label: 'Inventory', href: '/inventory' },
+  { label: 'Destinations', href: '/destinations' },
+  { label: 'Dashboard', href: '/dashboard' },
+];
 
 export default function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
+      setIsScrolled(window.scrollY > 20);
     };
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
-    setMobileOpen(false);
-  }, [location]);
-
-  const navLinks = [
-    { label: 'Inventory', path: '/inventory' },
-    { label: 'How It Works', path: '/#how-it-works' },
-    { label: 'Destinations', path: '/#destinations' },
-    { label: 'Dashboard', path: '/dashboard' },
-  ];
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   return (
-    <>
-      <nav
-        className="fixed top-0 left-0 right-0 z-50 transition-all duration-200"
-        style={{
-          backgroundColor: scrolled ? 'rgba(10, 10, 10, 0.92)' : 'transparent',
-          backdropFilter: scrolled ? 'blur(12px)' : 'none',
-          borderBottom: scrolled ? '1px solid rgba(245, 240, 235, 0.08)' : '1px solid transparent',
-        }}
-      >
-        <div className="container-main">
-          <div className="flex items-center justify-between h-16">
-            <Link
-              to="/"
-              className="text-[1.25rem] font-bold uppercase tracking-[0.12em]"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              JDM EXPORT
-            </Link>
-
-            <div className="hidden md:flex items-center gap-8">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className="transition-colors duration-200 hover:text-[var(--text-primary)]"
-                  style={{
-                    color: 'var(--text-secondary)',
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 500,
-                    fontSize: '0.875rem',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  {link.label}
-                </Link>
-              ))}
+    <nav
+      className={cn(
+        'fixed top-0 left-0 right-0 z-50 transition-all duration-500',
+        isScrolled
+          ? 'bg-black/80 backdrop-blur-xl border-b border-white/5'
+          : 'bg-transparent'
+      )}
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 md:h-20">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Globe className="w-5 h-5 text-white" />
             </div>
+            <span className="text-lg font-bold text-white">
+              SHK <span className="text-indigo-400">Global</span>
+            </span>
+          </Link>
 
-            <div className="hidden md:flex items-center gap-3">
-              <button
-                className="flex items-center gap-1 px-3 py-1.5 rounded-md border transition-colors duration-150"
-                style={{
-                  backgroundColor: 'var(--surface)',
-                  borderColor: 'var(--border-subtle)',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  letterSpacing: '0.08em',
-                }}
-              >
-                USD <ChevronDown size={12} />
-              </button>
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center gap-1">
+            {NAV_LINKS.map((link) => (
               <Link
-                to="/inventory"
-                className="px-5 py-2.5 rounded-md font-semibold text-sm transition-all duration-150 hover:brightness-110 hover:scale-[1.02]"
-                style={{
-                  backgroundColor: 'var(--amber)',
-                  color: 'var(--bg)',
-                }}
+                key={link.href}
+                to={link.href}
+                className={cn(
+                  'relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300',
+                  location.pathname === link.href
+                    ? 'text-white bg-white/10'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                )}
               >
-                Get Quote
+                {link.label}
+                {location.pathname === link.href && (
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-400" />
+                )}
               </Link>
-            </div>
-
-            <button
-              className="md:hidden p-2"
-              onClick={() => setMobileOpen(!mobileOpen)}
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+            ))}
           </div>
-        </div>
-      </nav>
 
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-8"
-          style={{ backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
-        >
-          {navLinks.map((link) => (
+          {/* Desktop CTA */}
+          <div className="hidden md:flex items-center gap-3">
+            <Button
+              variant="ghost"
+              className="text-gray-300 hover:text-white hover:bg-white/5"
+              asChild
+            >
+              <Link to="/admin/review">Admin</Link>
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-full px-6"
+              asChild
+            >
+              <Link to="/inventory">Start Bidding</Link>
+            </Button>
+          </div>
+
+          {/* Mobile menu button */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile menu */}
+      <div
+        className={cn(
+          'md:hidden absolute top-full left-0 right-0 bg-black/95 backdrop-blur-xl border-b border-white/5 transition-all duration-300 overflow-hidden',
+          isMobileMenuOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+        )}
+      >
+        <div className="px-4 py-4 space-y-1">
+          {NAV_LINKS.map((link) => (
             <Link
-              key={link.path}
-              to={link.path}
-              className="text-h3 transition-colors duration-200"
-              style={{ color: 'var(--text-primary)' }}
-              onClick={() => setMobileOpen(false)}
+              key={link.href}
+              to={link.href}
+              className={cn(
+                'block px-4 py-3 rounded-lg text-sm font-medium transition-colors',
+                location.pathname === link.href
+                  ? 'text-white bg-white/10'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              )}
             >
               {link.label}
             </Link>
           ))}
-          <Link
-            to="/inventory"
-            className="mt-4 px-8 py-3 rounded-md font-semibold text-base"
-            style={{
-              backgroundColor: 'var(--amber)',
-              color: 'var(--bg)',
-            }}
-            onClick={() => setMobileOpen(false)}
-          >
-            Get Quote
-          </Link>
+          <div className="pt-4 border-t border-white/5">
+            <Button
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full"
+              asChild
+            >
+              <Link to="/inventory">Start Bidding</Link>
+            </Button>
+          </div>
         </div>
-      )}
-    </>
+      </div>
+    </nav>
   );
 }
