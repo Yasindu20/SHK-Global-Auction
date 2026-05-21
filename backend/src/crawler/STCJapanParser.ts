@@ -11,6 +11,14 @@ const SITE_BASE = 'https://stcjapan.net';
  */
 const SESSION_PAGE_LIMIT = 12;
 
+/**
+ * Safety ceiling on list pages when a tight year filter is active.
+ * With from_year=2024 & to_year=2026, STC Japan returns ~18 vehicles
+ * across at most 1–2 pages. 10 is a generous upper bound that prevents
+ * the loop from running forever if pagination behaves unexpectedly.
+ */
+const MAX_LIST_PAGES = 10;
+
 export class STCJapanParser extends Crawler {
   private _ctx: BrowserContext | null = null;
   private _ctxPageCount = 0;
@@ -38,23 +46,29 @@ export class STCJapanParser extends Crawler {
   /**
    * Visits the STC Japan homepage like a new visitor would.
    * Establishes session cookies and realistic navigation history.
+   *
+   * Timings are kept lean (vs the original) because for small filtered
+   * batches we don't need to simulate long reading sessions.
    */
   private async _warmUpHomepage(context: BrowserContext): Promise<void> {
     const page = await context.newPage();
     try {
-      await page.setExtraHTTPHeaders({ 'Referer': 'https://www.google.com/search?q=stc+japan+used+cars+export' });
-      await page.goto(SITE_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      await this.humanDelay(2200, 900); // "reading" homepage
-      await this.simulateScroll(page, 0.4);
-      await this.simulateMouseMovement(page);
-      await this.humanDelay(1400, 600);
+      await page.setExtraHTTPHeaders({
+        'Referer': 'https://www.google.com/search?q=stc+japan+used+cars+export',
+      });
+      await page.goto(SITE_BASE + '/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 30_000,
+      });
 
-      // Sometimes visit the search page too (extra legitimacy)
-      if (Math.random() > 0.5) {
-        await page.goto(SITE_BASE + '/search.php', { waitUntil: 'domcontentloaded', timeout: 30_000 });
-        await this.humanDelay(1800, 700);
-        await this.simulateScroll(page, 0.3);
-      }
+      // Reduced from 2200 → 1500 ms; enough to appear human, faster overall
+      await this.humanDelay(1500, 500);
+      await this.simulateScroll(page, 0.3);   // reduced coverage 0.4 → 0.3
+      await this.simulateMouseMovement(page);
+      await this.humanDelay(1000, 400);
+
+      // Skip the extra /search.php warm-up visit that the original did
+      // 50 % of the time — for tight filtered batches it only adds latency.
     } catch (e) {
       console.warn('[warmup] homepage visit failed (non-fatal):', (e as Error).message);
     } finally {
@@ -78,7 +92,9 @@ export class STCJapanParser extends Crawler {
         }
         // Exponential back-off: 4s, 8s, 16s …
         const backoff = 4000 * Math.pow(2, attempt - 1) + Math.random() * 1000;
-        console.warn(`[retry] ${label} attempt ${attempt} failed. Waiting ${Math.round(backoff / 1000)}s…`);
+        console.warn(
+          `[retry] ${label} attempt ${attempt} failed. Waiting ${Math.round(backoff / 1000)}s…`
+        );
         await this.wait(backoff);
 
         // Force a new session after a failure — we may be rate-limited
@@ -97,10 +113,10 @@ export class STCJapanParser extends Crawler {
     const title = await page.title().catch(() => '');
     const body  = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? '');
     const blocked =
-      title.toLowerCase().includes('captcha')       ||
-      title.toLowerCase().includes('blocked')       ||
-      title.toLowerCase().includes('access denied') ||
-      body.toLowerCase().includes('captcha')        ||
+      title.toLowerCase().includes('captcha')          ||
+      title.toLowerCase().includes('blocked')          ||
+      title.toLowerCase().includes('access denied')    ||
+      body.toLowerCase().includes('captcha')           ||
       body.toLowerCase().includes('too many requests') ||
       body.toLowerCase().includes('rate limit');
     if (blocked) console.warn('[blocked] Potential bot detection on page:', page.url());
@@ -163,7 +179,7 @@ export class STCJapanParser extends Crawler {
             return '';
           };
 
-          const parseNum   = (s: string) => parseInt(s.replace(/[^0-9]/g, ''), 10) || 0;
+          const parseNum    = (s: string) => parseInt(s.replace(/[^0-9]/g, ''), 10) || 0;
           const parseFloat2 = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
 
           const stockId =
@@ -186,28 +202,40 @@ export class STCJapanParser extends Crawler {
           const addImg = (src: string | null | undefined) => {
             if (!src || src.startsWith('data:') || seen.has(src)) return;
             const lower = src.toLowerCase();
-            if (['logo','icon','flag','banner','sprite','button','arrow','bg.','background']
-                .some(k => lower.includes(k))) return;
-            if (lower.match(/\.(jpe?g|png|webp)(\?|$)/) ||
-                ['stock_image','car_image','vehicle','photo','thumb','gallery','wowslider','upload','img/']
-                .some(k => lower.includes(k))) {
+            if (
+              ['logo', 'icon', 'flag', 'banner', 'sprite', 'button', 'arrow', 'bg.', 'background'].some(
+                (k) => lower.includes(k)
+              )
+            )
+              return;
+            if (
+              lower.match(/\.(jpe?g|png|webp)(\?|$)/) ||
+              ['stock_image', 'car_image', 'vehicle', 'photo', 'thumb', 'gallery', 'wowslider', 'upload', 'img/'].some(
+                (k) => lower.includes(k)
+              )
+            ) {
               seen.add(src);
               imgUrls.push(src);
             }
           };
 
-          Array.from(document.querySelectorAll('img')).forEach(img => {
-            [img.src, img.getAttribute('data-src'), img.getAttribute('data-original'),
-             img.getAttribute('data-lazy'), img.getAttribute('data-lazy-src'),
-             img.getAttribute('data-full')].forEach(addImg);
+          Array.from(document.querySelectorAll('img')).forEach((img) => {
+            [
+              img.src,
+              img.getAttribute('data-src'),
+              img.getAttribute('data-original'),
+              img.getAttribute('data-lazy'),
+              img.getAttribute('data-lazy-src'),
+              img.getAttribute('data-full'),
+            ].forEach(addImg);
           });
 
-          Array.from(document.querySelectorAll('a[href]')).forEach(a => {
+          Array.from(document.querySelectorAll('a[href]')).forEach((a) => {
             const href = (a as HTMLAnchorElement).href;
             if (href?.match(/\.(jpe?g|png|webp)(\?|$)/i)) addImg(href);
           });
 
-          Array.from(document.querySelectorAll('[style*="background"]')).forEach(div => {
+          Array.from(document.querySelectorAll('[style*="background"]')).forEach((div) => {
             const m = (div as HTMLElement).style.backgroundImage.match(/url\(['"]?([^'"]+)['"]?\)/);
             if (m) addImg(m[1]);
           });
@@ -221,9 +249,17 @@ export class STCJapanParser extends Crawler {
             year:         parseNum(yearRaw),
             mileage:      parseNum(getTdValue('Mileage') || getTdValue('KM') || '0'),
             transmission: getTdValue('Transmission') || getTdValue('Gear') || 'Automatic',
-            fuel:         getTdValue('Fuel') || getTdValue('Fuel Type') || getTdValue('Engine Type') || 'Petrol',
-            color:        getTdValue('Exterior color') || getTdValue('Color') || getTdValue('Colour') || '',
-            price:        parseFloat2(
+            fuel:
+              getTdValue('Fuel') ||
+              getTdValue('Fuel Type') ||
+              getTdValue('Engine Type') ||
+              'Petrol',
+            color:
+              getTdValue('Exterior color') ||
+              getTdValue('Color') ||
+              getTdValue('Colour') ||
+              '',
+            price: parseFloat2(
               getTdValue('Price') || getTdValue('FOB Price') || getTdValue('Amount') || '0'
             ),
             images: imgUrls.slice(0, 15),
@@ -234,11 +270,11 @@ export class STCJapanParser extends Crawler {
 
         return {
           ...data,
-          location:    'Japan',
-          sourceUrl:   url,
-          supplierName:'STC Japan',
-          timestamp:   new Date(),
-          status:      'pending',
+          location:     'Japan',
+          sourceUrl:    url,
+          supplierName: 'STC Japan',
+          timestamp:    new Date(),
+          status:       'pending',
         };
       } catch (err) {
         await page.close().catch(() => {});
@@ -251,68 +287,99 @@ export class STCJapanParser extends Crawler {
   }
 
   // ─── Get listing links from ONE search-result page ────────────────────────
-  async getListingLinks(baseUrl: string): Promise<{ href: string; year?: number }[]> {
-  return (await this.withRetry(async () => {
-    const context = await this.getContext();
-    const page    = await context.newPage();
-    this._ctxPageCount++;
+  async getListingLinks(
+    baseUrl: string
+  ): Promise<{ href: string; year?: number }[]> {
+    return (
+      (await this.withRetry(async () => {
+        const context = await this.getContext();
+        const page    = await context.newPage();
+        this._ctxPageCount++;
 
-    try {
-      await page.setExtraHTTPHeaders({ 'Referer': `${SITE_BASE}/` });
-      await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 60_000 });
+        try {
+          await page.setExtraHTTPHeaders({ 'Referer': `${SITE_BASE}/` });
+          await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 60_000 });
 
-      if (await this._isBlocked(page)) {
-        this._ctxPageCount = SESSION_PAGE_LIMIT;
-        throw new Error('Bot detection on listing page');
-      }
+          if (await this._isBlocked(page)) {
+            this._ctxPageCount = SESSION_PAGE_LIMIT;
+            throw new Error('Bot detection on listing page');
+          }
 
-      await this.humanDelay(1200, 500);
-      await this.simulateScroll(page, 0.5);
+          await this.humanDelay(1200, 500);
+          await this.simulateScroll(page, 0.5);
 
-      const links = await page.evaluate(() => {
-        const results: { href: string; year?: number }[] = [];
-        const seen = new Set<string>();
-        const anchors = Array.from(document.querySelectorAll(
-          'a[href*="Car-Details"], a[href*="car-details"], a[href*="vehicle-details"], a[href*="detail"], a[href*="stock"]'
-        ));
-        for (const a of anchors) {
-          const href = (a as HTMLAnchorElement).href;
-          if (!href || seen.has(href)) continue;
-          seen.add(href);
-          const text =
-            a.textContent?.trim() ||
-            a.closest('tr, .car-card, .vehicle-card')?.textContent || '';
-          const yearMatch = text.match(/\b(20\d{2})\b/);
-          results.push({ href, year: yearMatch ? parseInt(yearMatch[1]) : undefined });
+          const links = await page.evaluate(() => {
+            const results: { href: string; year?: number }[] = [];
+            const seen    = new Set<string>();
+            const anchors = Array.from(
+              document.querySelectorAll(
+                'a[href*="Car-Details"], a[href*="car-details"], a[href*="vehicle-details"], a[href*="detail"], a[href*="stock"]'
+              )
+            );
+            for (const a of anchors) {
+              const href = (a as HTMLAnchorElement).href;
+              if (!href || seen.has(href)) continue;
+              seen.add(href);
+              const text =
+                a.textContent?.trim() ||
+                a.closest('tr, .car-card, .vehicle-card')?.textContent ||
+                '';
+              const yearMatch = text.match(/\b(20\d{2})\b/);
+              results.push({
+                href,
+                year: yearMatch ? parseInt(yearMatch[1]) : undefined,
+              });
+            }
+            return results;
+          });
+
+          return links;
+        } finally {
+          await page.close().catch(() => {});
         }
-        return results;
-      });
+      }, 3, baseUrl)) ?? []
+    );
+  }
 
-      return links;
-    } finally {
-      await page.close().catch(() => {});
-    }
-  }, 3, baseUrl)) ?? [];
-}
-
-  // ─── Phase 1 — collect all listing links across all pages ─────────────────
+  // ─── Phase 1 — collect all listing links across filtered pages ────────────
+  /**
+   * Uses STC Japan's built-in year-range filter so the server does the
+   * heavy lifting. With from_year=2024 & to_year=2026 the site returns
+   * only the matching vehicles (≈18), typically on 1–2 pages.
+   *
+   * Key changes vs the original:
+   *  • to_year is now set  ← this is the main optimisation
+   *  • MAX_LIST_PAGES caps the loop at 10 (was unbounded)
+   *  • minYear client-side guard is kept as a safety net
+   */
   async getAllListingLinks(
     minYear: number,
+    maxYear: number = new Date().getFullYear() + 1,
     onLog?: (msg: string) => void
   ): Promise<string[]> {
     const log = onLog ?? console.log;
     const allHrefs: string[] = [];
-    const seen = new Set<string>();
-    let page = 1;
-    let emptyPages = 0;
+    const seen      = new Set<string>();
+    let page        = 1;
+    let emptyPages  = 0;
 
-    log(`🔍 Phase 1 — Collecting links (STC Japan filter: year ≥ ${minYear})…`);
+    log(
+      `🔍 Phase 1 — Collecting links ` +
+      `(STC Japan filter: ${minYear} ≤ year ≤ ${maxYear}, max ${MAX_LIST_PAGES} pages)…`
+    );
 
     while (true) {
+      // ── Hard page cap — with a tight date filter we should never need many pages
+      if (page > MAX_LIST_PAGES) {
+        log(`   🛑 Reached page cap (${MAX_LIST_PAGES}) — stopping collection.`);
+        break;
+      }
+
       const listUrl =
         `${SITE_BASE}/search.php?` +
         `make=&model=&fuel=&transmission=&category=&color=` +
-        `&from_year=${minYear}&to_year=&page=${page}&searchy=Search+Now%21`;
+        `&from_year=${minYear}&to_year=${maxYear}` +   // ← to_year is now set
+        `&page=${page}&searchy=Search+Now%21`;
 
       log(`   📄 Page ${page} — ${listUrl}`);
 
@@ -330,9 +397,19 @@ export class STCJapanParser extends Crawler {
       }
       emptyPages = 0;
 
-      for (const { href } of links) {
-        if (!seen.has(href)) { seen.add(href); allHrefs.push(href); }
+      for (const { href, year } of links) {
+        // Extra client-side guard: skip anything the server may have slipped
+        // through that falls outside our year window.
+        if (year !== undefined && (year < minYear || year > maxYear)) {
+          log(`   ⏭  Skipping link with year ${year} (outside ${minYear}–${maxYear})`);
+          continue;
+        }
+        if (!seen.has(href)) {
+          seen.add(href);
+          allHrefs.push(href);
+        }
       }
+
       log(`      Cumulative unique links: ${allHrefs.length}`);
       page++;
 
@@ -346,30 +423,36 @@ export class STCJapanParser extends Crawler {
 
   // ─── Phase 2 — parallel detail scraping with conservative concurrency ──────
   /**
-   * Default concurrency is 2 (down from 4) — safer, still reasonable speed.
+   * Default concurrency raised to 4 (safe default).
+   * With only ~18 detail pages the whole job finishes in a handful of batches.
    * Stagger start times within each batch to avoid burst traffic.
    */
   async scrapeAllByYear(
     minYear: number,
+    maxYear: number = new Date().getFullYear() + 1,
     onSave: (data: any) => Promise<void>,
     onLog?: (msg: string) => void,
-    concurrency = 2              // ← reduced default for safety
+    concurrency = 4
   ): Promise<number> {
     const log = onLog ?? console.log;
 
-    // Clamp: never run more than 3 concurrent scrapers on a single site
-    const safeConc = Math.min(concurrency, 3);
-    log(`🚀 2-phase stealth crawl — year ≥ ${minYear}, concurrency ${safeConc}`);
+    // Clamp: never run more than 6 concurrent scrapers on a single site
+    const safeConc = Math.min(concurrency, 6);
+    log(
+      `🚀 2-phase stealth crawl — ${minYear}–${maxYear}, concurrency ${safeConc}`
+    );
 
     // ── Phase 1 ────────────────────────────────────────────────────────────
-    const hrefs = await this.getAllListingLinks(minYear, log);
+    const hrefs = await this.getAllListingLinks(minYear, maxYear, log);
     if (hrefs.length === 0) {
       log('⚠  No listings found.');
       return 0;
     }
 
     // ── Phase 2 ────────────────────────────────────────────────────────────
-    log(`\n⚡ Phase 2 — Scraping ${hrefs.length} detail page(s) (concurrency ${safeConc})…`);
+    log(
+      `\n⚡ Phase 2 — Scraping ${hrefs.length} detail page(s) (concurrency ${safeConc})…`
+    );
 
     let totalAdded = 0;
     let processed  = 0;
@@ -387,10 +470,13 @@ export class STCJapanParser extends Crawler {
         log(`   ⚠  ${progress} No data: ${href}`);
         return;
       }
-      if (data.year > 0 && data.year < minYear) {
-        log(`   ⏭  ${progress} Year ${data.year} < ${minYear} — skipped`);
+
+      // Double-check year bounds on the scraped detail data
+      if (data.year > 0 && (data.year < minYear || data.year > maxYear)) {
+        log(`   ⏭  ${progress} Year ${data.year} outside ${minYear}–${maxYear} — skipped`);
         return;
       }
+
       if (!data.stockId || !data.make) {
         log(`   ⚠  ${progress} Missing stockId/make — skipped`);
         return;
@@ -399,7 +485,10 @@ export class STCJapanParser extends Crawler {
       try {
         await onSave(data);
         totalAdded++;
-        log(`   ✅ ${progress} Saved: ${data.year} ${data.make} ${data.model} (${data.stockId}) — ${data.images.length} image(s)`);
+        log(
+          `   ✅ ${progress} Saved: ${data.year} ${data.make} ${data.model} ` +
+          `(${data.stockId}) — ${data.images.length} image(s)`
+        );
       } catch (err: any) {
         if (err.code === 11000) {
           log(`   🔁 ${progress} Duplicate — ${data.stockId}`);
@@ -429,7 +518,12 @@ export class STCJapanParser extends Crawler {
       this._ctx = null;
     }
 
-    log(`\n🏁 Crawl complete — Added: ${totalAdded} | Skipped/Dup: ${processed - totalAdded} | Total: ${processed}`);
+    log(
+      `\n🏁 Crawl complete — ` +
+      `Added: ${totalAdded} | ` +
+      `Skipped/Dup: ${processed - totalAdded} | ` +
+      `Total: ${processed}`
+    );
     return totalAdded;
   }
 
