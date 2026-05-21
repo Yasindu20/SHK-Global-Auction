@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import anime from 'animejs';
+import * as anime from 'animejs';
 import { 
   Globe, 
   MapPin, 
@@ -12,8 +12,6 @@ import {
   Shield, 
   Clock, 
   Users,
-  ChevronLeft,
-  ChevronRight,
   X,
   ExternalLink,
   Star,
@@ -23,13 +21,34 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
 import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { cn } from '@/lib/utils';
 
 gsap.registerPlugin(ScrollTrigger);
+
+// ─── INLINE FOOTER ───
+function Footer() {
+  return (
+    <footer className="bg-[#050505] border-t border-white/5 py-12">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <Globe className="w-6 h-6 text-indigo-400" />
+            <span className="text-white font-bold text-lg">SHK Global Auction</span>
+          </div>
+          <p className="text-gray-500 text-sm">
+            © {new Date().getFullYear()} SHK Global Auction. All rights reserved.
+          </p>
+          <div className="flex items-center gap-6 text-sm text-gray-500">
+            <a href="#" className="hover:text-white transition-colors">Privacy</a>
+            <a href="#" className="hover:text-white transition-colors">Terms</a>
+            <a href="#" className="hover:text-white transition-colors">Contact</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
 
 // ─── REAL COUNTRY DATA ───
 export interface CountryData {
@@ -184,7 +203,7 @@ const COUNTRIES: CountryData[] = [
     gdp: '$1.1T',
     image: 'https://images.unsplash.com/photo-1547234935-80c7142ee969?w=1920&q=80',
     flag: 'https://flagcdn.com/w640/sa.png',
-    description: 'Saudi Arabia marks our fastest-growing market with Vision 2030 alignment, focusing on luxury imports, EV infrastructure auctions, and industrial equipment. Riyadh and Jeddah centers serve the Kingdom's transformative automotive sector.',
+    description: "Saudi Arabia marks our fastest-growing market with Vision 2030 alignment, focusing on luxury imports, EV infrastructure auctions, and industrial equipment. Riyadh and Jeddah centers serve the Kingdom's transformative automotive sector.",
     highlights: ['Vision 2030 Aligned', 'Luxury Import Specialists', 'EV Infrastructure Auctions', 'Industrial Equipment Hub'],
     marketStats: { auctionsPerMonth: 38, avgVehiclePrice: '$95,000', growthRate: '+35%', activeBidders: 2800 },
     coordinates: { lat: 23.8859, lng: 45.0792 },
@@ -666,14 +685,6 @@ function HeroSection({ onExplore }: { onExplore: () => void }) {
           <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </Button>
       </div>
-
-      {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-        <span className="text-xs text-gray-500 uppercase tracking-widest">Scroll</span>
-        <div className="w-6 h-10 rounded-full border-2 border-white/20 flex justify-center pt-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-white/60 animate-bounce" />
-        </div>
-      </div>
     </section>
   );
 }
@@ -859,8 +870,7 @@ function CountryDetail({ country, onClose }: { country: CountryData; onClose: ()
     );
 
     // Animate stats with anime.js
-    anime({
-      targets: '.stat-animate',
+    anime.animate('.stat-animate', {
       translateY: [20, 0],
       opacity: [0, 1],
       delay: anime.stagger(100, { start: 300 }),
@@ -868,8 +878,7 @@ function CountryDetail({ country, onClose }: { country: CountryData; onClose: ()
     });
 
     // Animate highlights
-    anime({
-      targets: '.highlight-item',
+    anime.animate('.highlight-item', {
       translateX: [-20, 0],
       opacity: [0, 1],
       delay: anime.stagger(80, { start: 500 }),
@@ -1325,7 +1334,6 @@ function CTASection() {
 export default function Destinations() {
   const [activeCountry, setActiveCountry] = useState<string | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<CountryData | null>(null);
-  const navigate = useNavigate();
 
   const handleCountrySelect = useCallback((id: string) => {
     setActiveCountry(id);
