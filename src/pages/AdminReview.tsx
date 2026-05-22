@@ -26,7 +26,8 @@ const AdminReview = () => {
 
   const fetchListings = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/listings');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/listings`);
       const data = await response.json();
       setListings(data);
     } catch (error) {
@@ -36,7 +37,8 @@ const AdminReview = () => {
 
   const handleApprove = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/listings/approve/${id}`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/listings/approve/${id}`, {
         method: 'POST',
       });
       if (response.ok) {

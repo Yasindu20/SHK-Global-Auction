@@ -78,7 +78,8 @@ const AdminAddVehicle = () => {
     files.forEach(file => formDataUpload.append('images', file));
 
     try {
-      const response = await fetch('http://localhost:5000/api/upload', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const response = await fetch(`${API_URL}/api/upload`, {
         method: 'POST',
         body: formDataUpload,
       });
@@ -115,7 +116,8 @@ const AdminAddVehicle = () => {
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/vehicles', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/vehicles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, images }),

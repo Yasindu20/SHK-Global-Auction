@@ -12,7 +12,7 @@ import {
 import gsap from 'gsap';
 import Footer from '../sections/Footer';
 
-const API = 'http://localhost:5000';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=1280&h=800&q=80&auto=format&fit=crop';
