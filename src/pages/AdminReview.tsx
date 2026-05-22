@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
@@ -24,7 +26,8 @@ const AdminReview = () => {
 
   const fetchListings = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/listings');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/listings`);
       const data = await response.json();
       setListings(data);
     } catch (error) {
@@ -34,7 +37,8 @@ const AdminReview = () => {
 
   const handleApprove = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/listings/approve/${id}`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/listings/approve/${id}`, {
         method: 'POST',
       });
       if (response.ok) {
@@ -48,7 +52,14 @@ const AdminReview = () => {
 
   return (
     <div className="container mx-auto py-10">
-      <h1 className="text-3xl font-bold mb-6">Admin Review Queue</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Admin Review Queue</h1>
+        <Button asChild>
+          <Link to="/admin/add-vehicle">
+            <Plus className="w-4 h-4 mr-2" /> Add New Vehicle
+          </Link>
+        </Button>
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
