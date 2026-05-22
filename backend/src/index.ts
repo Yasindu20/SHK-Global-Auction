@@ -2,8 +2,10 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import Listing from './models/Listing';
-import { upload } from './lib/cloudinary';
 import { STCJapanParser } from './crawler/STCJapanParser';
 
 dotenv.config();
@@ -12,13 +14,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT        = process.env.PORT || 5000;
+// ─── Static Files for Uploads ────────────────────────────────────────────────
+const UPLOADS_DIR = path.join(__dirname, '../../public/uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/car_auction';
 
 mongoose
   .connect(MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error('MongoDB connection error:', err));
+
+// ─── Multer Disk Storage ─────────────────────────────────────────────────────
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ storage });
 
 // ─── Track active crawl state ─────────────────────────────────────────────────
 interface CrawlState {
@@ -47,7 +69,6 @@ const crawlState: CrawlState = {
   maxYear:    2026,
 };
 
-// ─── SSE clients for live log streaming ──────────────────────────────────────
 const sseClients: express.Response[] = [];
 
 function broadcastLog(msg: string) {
@@ -124,7 +145,7 @@ app.post('/api/vehicles', async (req, res) => {
     const vehicleData = req.body;
     const newVehicle = new Listing({
       ...vehicleData,
-      status: 'approved', // Admin added vehicles are approved by default
+      status: 'approved',
       timestamp: new Date()
     });
     await newVehicle.save();
@@ -139,14 +160,15 @@ app.post('/api/vehicles', async (req, res) => {
   }
 });
 
-// ─── API: Image Upload ─────────────────────────────────────────────────────────
+// ─── API: Image Upload (Local Disk) ───────────────────────────────────────────
 app.post('/api/upload', upload.array('images', 15), (req, res) => {
   try {
-    const files = req.files as any[];
+    const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
     }
-    const urls = files.map(file => file.path);
+    // Return relative paths that the frontend can use
+    const urls = files.map(file => `/uploads/${file.filename}`);
     res.json({ urls });
   } catch (error: any) {
     console.error('Upload error:', error);
@@ -184,22 +206,6 @@ app.post('/api/crawl', async (req, res) => {
 });
 
 // ─── API: bulk crawl (optimised 2-phase) ──────────────────────────────────────
-/**
- * POST /api/crawl-batch
- * Body: {
- *   supplier:     "STC Japan",
- *   minYear?:     number,   // default 2024
- *   maxYear?:     number,   // default current year + 1  ← NEW
- *   concurrency?: number    // parallel scrapers, default 6  ← raised from 4
- * }
- *
- * Phase 1 — Uses STC Japan's from_year + to_year filter so the server
- *            returns only the matching vehicles (≈18 for 2024–2026).
- *            No unnecessary pages are visited.
- * Phase 2 — Scrapes only those filtered URLs in parallel.
- *
- * Monitor progress at GET /api/crawl-status or stream GET /api/crawl-logs.
- */
 app.post('/api/crawl-batch', async (req, res) => {
   if (crawlState.running) {
     return res
@@ -211,17 +217,15 @@ app.post('/api/crawl-batch', async (req, res) => {
     supplier,
     minYear     = 2024,
     maxYear     = new Date().getFullYear() + 1,
-    concurrency = 6,   // raised default: with ~18 pages, 6 is safe & fast
+    concurrency = 6,
   } = req.body;
 
   if (supplier !== 'STC Japan') {
     return res.status(400).json({ error: 'Unsupported supplier' });
   }
 
-  // Clamp concurrency to safe range
   const safeConc = Math.max(1, Math.min(concurrency, 8));
 
-  // Reset state
   crawlState.running    = true;
   crawlState.logs       = [];
   crawlState.added      = 0;
@@ -241,7 +245,6 @@ app.post('/api/crawl-batch', async (req, res) => {
       `Stream logs at GET /api/crawl-logs or poll GET /api/crawl-status.`,
   });
 
-  // ── Background task ──────────────────────────────────────────────────────
   (async () => {
     const parser = new STCJapanParser();
     broadcastLog(
@@ -259,15 +262,9 @@ app.post('/api/crawl-batch', async (req, res) => {
         },
         (msg) => {
           broadcastLog(msg);
-
-          // Track phase transitions
           if (msg.includes('Phase 2')) crawlState.phase = 'scraping';
-
-          // Extract totalLinks from Phase 1 summary log
           const linkMatch = msg.match(/(\d+) unique listing/);
           if (linkMatch) crawlState.totalLinks = parseInt(linkMatch[1]);
-
-          // Count skips / failures
           if (msg.includes('Duplicate') || msg.includes('⏭')) crawlState.skipped++;
           if (msg.includes('Failed') || msg.includes('❌') || msg.includes('💥'))
             crawlState.failed++;
@@ -282,11 +279,9 @@ app.post('/api/crawl-batch', async (req, res) => {
         `Failed: ${crawlState.failed}, ` +
         `Total links scraped: ${crawlState.totalLinks}`;
       broadcastLog(summary);
-      console.log(summary);
     } catch (err: any) {
       const msg = `💥 Crawl crashed: ${err.message}`;
       broadcastLog(msg);
-      console.error(msg);
     } finally {
       await parser.close();
       crawlState.running    = false;
@@ -296,7 +291,6 @@ app.post('/api/crawl-batch', async (req, res) => {
   })();
 });
 
-// ─── API: stop crawl (graceful) ───────────────────────────────────────────────
 app.post('/api/crawl-stop', (_req, res) => {
   if (!crawlState.running) {
     return res.json({ message: 'No crawl is running.' });
@@ -306,7 +300,6 @@ app.post('/api/crawl-stop', (_req, res) => {
   res.json({ message: 'Stop signal sent. Current batch will finish first.' });
 });
 
-// ─── API: crawl status ────────────────────────────────────────────────────────
 app.get('/api/crawl-status', (_req, res) => {
   res.json({
     running:    crawlState.running,
@@ -323,14 +316,12 @@ app.get('/api/crawl-status', (_req, res) => {
   });
 });
 
-// ─── API: SSE live log stream ─────────────────────────────────────────────────
 app.get('/api/crawl-logs', (req, res) => {
   res.setHeader('Content-Type',  'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection',    'keep-alive');
   res.flushHeaders();
 
-  // Replay buffered logs so a late-connecting client catches up
   for (const line of crawlState.logs) {
     res.write(`data: ${JSON.stringify({ log: line })}\n\n`);
   }
@@ -343,7 +334,6 @@ app.get('/api/crawl-logs', (req, res) => {
   });
 });
 
-// ─── API: stats ───────────────────────────────────────────────────────────────
 app.get('/api/stats', async (_req, res) => {
   try {
     const total    = await Listing.countDocuments();
