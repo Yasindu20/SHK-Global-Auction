@@ -4,13 +4,12 @@ import {
   Heart,
   Share2,
   ArrowLeft,
-  FileText,
-  MessageCircle,
   ChevronLeft,
   ChevronRight,
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 import gsap from 'gsap';
-import { type Vehicle } from '../data/vehicles';
 import Footer from '../sections/Footer';
 
 const API = 'http://localhost:5000';
@@ -20,7 +19,7 @@ const FALLBACK_IMG =
 
 export default function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicle, setVehicle] = useState<any | null>(null);
   const [activeImg, setActiveImg] = useState(0);
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
@@ -85,6 +84,8 @@ export default function VehicleDetail() {
   const inspection = 280;
   const total = (vehicle.price || 0) + shippingCost + insurance + inspection;
 
+  const specs = vehicle.specs || {};
+
   return (
     <div style={{ backgroundColor: 'var(--bg)' }}>
       {/* ── Hero image + gallery ─────────────────────────────────────────────── */}
@@ -93,7 +94,7 @@ export default function VehicleDetail() {
         <div className="w-full h-full overflow-hidden">
           <img
             src={images[activeImg] || FALLBACK_IMG}
-            alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+            alt={`${vehicle.year} ${vehicle.make} ${vehicle.modelName}`}
             className="w-full h-full object-cover transition-opacity duration-300"
             onError={(e) => {
               (e.target as HTMLImageElement).src = FALLBACK_IMG;
@@ -166,7 +167,7 @@ export default function VehicleDetail() {
           <button
             className="p-2 rounded-md"
             style={{ backgroundColor: 'rgba(10,10,10,0.6)', color: 'var(--text-primary)', backdropFilter: 'blur(8px)' }}
-            onClick={() => navigator.share?.({ title: `${vehicle.year} ${vehicle.make} ${vehicle.model}`, url: window.location.href })}
+            onClick={() => navigator.share?.({ title: `${vehicle.year} ${vehicle.make} ${vehicle.modelName}`, url: window.location.href })}
           >
             <Share2 size={18} />
           </button>
@@ -182,7 +183,7 @@ export default function VehicleDetail() {
                 fontSize: 'clamp(1.8rem, 4vw, 3rem)',
               }}
             >
-              {vehicle.year} {vehicle.make} {vehicle.model}
+              {vehicle.year} {vehicle.make} {vehicle.modelName}
             </h1>
             <div className="flex items-center gap-3 mt-1">
               <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', letterSpacing: '0.08em' }}>
@@ -267,58 +268,65 @@ export default function VehicleDetail() {
               ))}
             </div>
 
-            {/* Vehicle details */}
-            <div className="detail-section mt-8 opacity-0">
-              <h3 className="text-h4 font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Vehicle Details
+            {/* Full Specs Section */}
+            <div className="detail-section mt-10 opacity-0">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <Info size={20} className="text-amber-500" /> Technical Specifications
               </h3>
-              <div className="mt-3 space-y-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
                 {[
-                  vehicle.chassisNumber && { label: 'Chassis Number', value: vehicle.chassisNumber, mono: true },
-                  { label: 'Stock ID', value: vehicle.stockId },
-                  { label: 'Location', value: vehicle.location || 'Japan' },
-                  { label: 'Supplier', value: vehicle.supplierName },
-                  vehicle.sourceUrl && { label: 'Source', value: vehicle.sourceUrl, link: true },
-                ]
-                  .filter(Boolean)
-                  .map((row: any, i) => (
-                    <div
-                      key={i}
-                      className="flex justify-between py-2.5"
-                      style={{ borderBottom: '1px solid var(--border-subtle)' }}
-                    >
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                        {row.label}
-                      </span>
-                      {row.link ? (
-                        <a
-                          href={row.value}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="truncate max-w-[60%] text-right"
-                          style={{ color: 'var(--amber)', fontSize: '0.875rem' }}
-                        >
-                          View Source ↗
-                        </a>
-                      ) : (
-                        <span
-                          style={{
-                            color: 'var(--text-primary)',
-                            fontSize: '0.875rem',
-                            fontFamily: row.mono ? 'monospace' : undefined,
-                          }}
-                        >
-                          {row.value}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                  { label: 'Body Type', value: specs.bodyType },
+                  { label: 'Engine Size', value: specs.engineSize },
+                  { label: 'Drive Train', value: specs.driveTrain },
+                  { label: 'Doors', value: specs.doors },
+                  { label: 'Seats', value: specs.seats },
+                  { label: 'Steering', value: specs.steering },
+                  { label: 'VIN', value: specs.vin },
+                  { label: 'Chassis No', value: specs.chassisNumber || vehicle.chassisNumber },
+                  { label: 'Auction Grade', value: specs.auctionGrade },
+                ].filter(s => s.value).map((spec, i) => (
+                  <div key={i} className="flex justify-between py-2 border-b border-white/5">
+                    <span className="text-sm text-white/50">{spec.label}</span>
+                    <span className="text-sm text-white font-medium">{spec.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
+            {/* Description */}
+            {vehicle.description && (
+              <div className="detail-section mt-10 opacity-0">
+                <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+                  Description
+                </h3>
+                <div className="prose prose-invert max-w-none">
+                  <p className="text-white/70 whitespace-pre-wrap leading-relaxed">
+                    {vehicle.description}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Features */}
+            {specs.features && specs.features.length > 0 && (
+              <div className="detail-section mt-10 opacity-0">
+                <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+                  Key Features
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {specs.features.map((feature: string, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-white/70">
+                      <CheckCircle2 size={16} className="text-green-500" />
+                      {feature}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Shipping estimate */}
-            <div className="detail-section mt-8 opacity-0">
-              <h3 className="text-h4 font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <div className="detail-section mt-10 opacity-0">
+              <h3 className="text-xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
                 Shipping Estimate
               </h3>
               <p className="mt-3" style={{ color: 'var(--amber)' }}>
@@ -347,7 +355,7 @@ export default function VehicleDetail() {
               <span className="text-label" style={{ color: 'var(--text-secondary)' }}>
                 Starting Bid
               </span>
-              <span className="block mt-1 text-price" style={{ color: 'var(--amber)' }}>
+              <span className="block mt-1 text-price" style={{ color: 'var(--amber)', fontSize: '2rem', fontWeight: 'bold' }}>
                 {vehicle.price > 0 ? `$${vehicle.price.toLocaleString()}` : 'Price on Request'}
               </span>
 
@@ -368,87 +376,39 @@ export default function VehicleDetail() {
                     ].map((item) => (
                       <div
                         key={item.label}
-                        className="flex justify-between"
-                        style={{ fontSize: '0.875rem' }}
+                        className="flex justify-between text-sm"
                       >
                         <span style={{ color: 'var(--text-secondary)' }}>{item.label}</span>
-                        <span style={{ color: 'var(--text-primary)' }}>
-                          + ${item.value.toLocaleString()}
-                        </span>
+                        <span style={{ color: 'var(--text-primary)' }}>${item.value.toLocaleString()}</span>
                       </div>
                     ))}
-                  </div>
-                  <div
-                    className="flex justify-between mt-4 pt-4"
-                    style={{ borderTop: '1px solid var(--border-subtle)' }}
-                  >
-                    <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      Total
-                    </span>
-                    <span className="text-h2" style={{ color: 'var(--amber)', fontSize: '1.5rem' }}>
-                      ${total.toLocaleString()}
-                    </span>
+                    <div
+                      className="flex justify-between pt-2 mt-2 font-bold"
+                      style={{ borderTop: '1px dashed var(--border-subtle)' }}
+                    >
+                      <span style={{ color: 'var(--text-primary)' }}>Total CIF</span>
+                      <span style={{ color: 'var(--amber)' }}>${total.toLocaleString()}</span>
+                    </div>
                   </div>
                 </div>
               )}
 
               <button
-                className="w-full mt-6 py-3 rounded-lg font-semibold text-sm transition-all hover:brightness-110 hover:scale-[1.02]"
-                style={{ backgroundColor: 'var(--amber)', color: 'var(--bg)' }}
+                className="w-full mt-6 py-4 rounded-lg font-bold transition-all hover:brightness-110"
+                style={{ backgroundColor: 'var(--amber)', color: '#000' }}
               >
-                Request Quote
-              </button>
-              <button
-                className="w-full mt-3 py-3 rounded-lg font-semibold text-sm"
-                style={{
-                  backgroundColor: 'transparent',
-                  color: 'var(--amber)',
-                  border: '1px solid var(--amber)',
-                }}
-              >
-                Reserve with Deposit ($2,000)
+                Inquire Now
               </button>
 
-              <div
-                className="mt-6 pt-4"
-                style={{ borderTop: '1px solid var(--border-subtle)' }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: 'var(--surface-light)' }}
-                  >
-                    <FileText size={18} style={{ color: 'var(--amber)' }} />
-                  </div>
-                  <div>
-                    <p style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>
-                      JDM Export Co. Ltd.
-                    </p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
-                      15 years · 4,200+ sales
-                    </p>
-                  </div>
-                </div>
+              <div className="mt-4 flex items-center justify-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <CheckCircle2 size={14} className="text-green-500" />
+                <span>Verified Listing · Secure Transaction</span>
               </div>
-
-              <a
-                href="#"
-                className="flex items-center justify-center gap-2 mt-4 py-3 rounded-lg text-sm font-medium"
-                style={{
-                  backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                  color: 'var(--success)',
-                }}
-              >
-                <MessageCircle size={16} /> Chat on WhatsApp
-              </a>
             </div>
           </div>
         </div>
       </div>
-
-      <div className="mt-16">
-        <Footer />
-      </div>
+      <Footer />
     </div>
   );
 }

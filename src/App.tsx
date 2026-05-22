@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import Inventory from './pages/Inventory';
 import AdminReview from './pages/AdminReview';
+import AdminAddVehicle from './pages/AdminAddVehicle';
 import VehicleDetail from './pages/VehicleDetail';
 import Dashboard from './pages/Dashboard';
 import Destinations from './pages/Destinations';
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/vehicle/:id" element={<VehicleDetail />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin/review" element={<AdminReview />} />
+        <Route path="/admin/add-vehicle" element={<AdminAddVehicle />} />
       </Routes>
     </>
   );

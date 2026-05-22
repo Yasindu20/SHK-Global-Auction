@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Listing from './models/Listing';
+import { upload } from './lib/cloudinary';
 import { STCJapanParser } from './crawler/STCJapanParser';
 
 dotenv.config();
@@ -114,6 +115,42 @@ app.post('/api/listings/reject/:id', async (req, res) => {
     res.json(listing);
   } catch {
     res.status(500).json({ error: 'Failed to reject listing' });
+  }
+});
+
+// ─── API: Manual Vehicle Creation ──────────────────────────────────────────────
+app.post('/api/vehicles', async (req, res) => {
+  try {
+    const vehicleData = req.body;
+    const newVehicle = new Listing({
+      ...vehicleData,
+      status: 'approved', // Admin added vehicles are approved by default
+      timestamp: new Date()
+    });
+    await newVehicle.save();
+    res.status(201).json(newVehicle);
+  } catch (error: any) {
+    console.error('Error creating vehicle:', error);
+    if (error.code === 11000) {
+      res.status(400).json({ error: 'Duplicate vehicle (Stock ID already exists)' });
+    } else {
+      res.status(500).json({ error: 'Failed to create vehicle', details: error.message });
+    }
+  }
+});
+
+// ─── API: Image Upload ─────────────────────────────────────────────────────────
+app.post('/api/upload', upload.array('images', 15), (req, res) => {
+  try {
+    const files = req.files as any[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+    const urls = files.map(file => file.path);
+    res.json({ urls });
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: 'Failed to upload images', details: error.message });
   }
 });
 
