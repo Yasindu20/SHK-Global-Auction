@@ -138,3 +138,102 @@
     50% { opacity: 0.5; }
   }
 }
+
+/* ============================================
+   HERO SECTION ADDITIONS
+   ============================================ */
+
+@layer utilities {
+  /* 3D perspective utilities */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+
+  /* Scroll indicator animation */
+  @keyframes scroll-line {
+    0% {
+      transform: translateY(-100%);
+      height: 0%;
+    }
+    50% {
+      transform: translateY(0%);
+      height: 100%;
+    }
+    100% {
+      transform: translateY(100%);
+      height: 0%;
+    }
+  }
+
+  .animate-scroll-line {
+    animation: scroll-line 2.5s cubic-bezier(0.76, 0, 0.24, 1) infinite;
+  }
+
+  /* Magnetic button hover state helper */
+  .magnetic-btn {
+    transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  /* Image loading blur-up */
+  .img-reveal {
+    animation: img-reveal 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes img-reveal {
+    from {
+      clip-path: inset(10% 10% 10% 10%);
+      filter: blur(20px) brightness(0.4);
+      transform: scale(1.1);
+    }
+    to {
+      clip-path: inset(0% 0% 0% 0%);
+      filter: blur(0px) brightness(1);
+      transform: scale(1);
+    }
+  }
+
+  /* Subtle ambient pulse for glow elements */
+  @keyframes ambient-pulse {
+    0%, 100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.6;
+      transform: scale(1.05);
+    }
+  }
+
+  .animate-ambient {
+    animation: ambient-pulse 8s ease-in-out infinite;
+  }
+}
+
+/* Ensure smooth font rendering for large display text */
+.text-display {
+  text-wrap: balance;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll-line,
+  .animate-ambient,
+  .img-reveal {
+    animation: none;
+  }
+  
+  .hero-word-inner,
+  .hero-subheadline,
+  .hero-cta-btn,
+  .hero-stats-wrapper,
+  .hero-carousel-wrapper {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}

@@ -7,8 +7,11 @@ import HowItWorks from '../sections/HowItWorks';
 import DestinationShowcase from '../sections/DestinationShowcase';
 import CTABanner from '../sections/CTABanner';
 import Footer from '../sections/Footer';
+import { useLenis } from '../hooks/useLenis';
 
 export default function Home() {
+  useLenis();
+
   return (
     <main>
       <Hero />
