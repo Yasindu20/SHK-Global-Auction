@@ -240,7 +240,9 @@ const COUNTRIES: CountryData[] = [
   },
 ];
 
-// ─── REALISTIC THREE.JS GLOBE ─────────────────────────────────────────────────
+// ─── FULLY-LIT THREE.JS GLOBE ─────────────────────────────────────────────────
+// Uses MeshBasicMaterial for Earth so the texture renders without any lighting
+// dependency — every part of the globe is equally visible (no dark side).
 function GlobeScene({
   activeCountry,
   onCountryClick,
@@ -293,14 +295,12 @@ function GlobeScene({
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
+    // No tone-mapping needed — BasicMaterial bypasses the lighting pipeline
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
     // ── Texture Loader ─────────────────────────────────────────────────────
     const loader = new THREE.TextureLoader();
-    // Three.js GitHub CDN — reliable CORS-enabled planet textures
     const PLANET =
       'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets';
 
@@ -308,26 +308,28 @@ function GlobeScene({
     const earthGroup = new THREE.Group();
     scene.add(earthGroup);
 
-    // Earth — Phong with diffuse, bump, specular maps
+    // ── Earth — MeshBasicMaterial: fully lit, no day/night split ────────────
+    // BasicMaterial ignores all lights; the diffuse texture is displayed at
+    // full brightness on every face, so the back hemisphere is never dark.
     const earthGeo = new THREE.SphereGeometry(5, 72, 72);
-    const earthMat = new THREE.MeshPhongMaterial({
-      map: loader.load(`${PLANET}/earth_atmos_2048.jpg`),
-      bumpMap: loader.load(`${PLANET}/earth_normal_2048.jpg`),
-      bumpScale: 0.045,
-      specularMap: loader.load(`${PLANET}/earth_specular_2048.jpg`),
-      specular: new THREE.Color(0x446688),
-      shininess: 22,
-    });
+    const earthTex = loader.load(`${PLANET}/earth_atmos_2048.jpg`);
+    earthTex.colorSpace = THREE.SRGBColorSpace;
+    earthTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    const earthMat = new THREE.MeshBasicMaterial({ map: earthTex });
     const earth = new THREE.Mesh(earthGeo, earthMat);
     earthGroup.add(earth);
 
-    // Clouds — separate slightly-larger sphere with alpha map
+    // ── Clouds — additive overlay so they brighten rather than darken ───────
     const cloudGeo = new THREE.SphereGeometry(5.11, 72, 72);
-    const cloudMat = new THREE.MeshPhongMaterial({
-      map: loader.load(`${PLANET}/earth_clouds_1024.png`),
+    const cloudTex = loader.load(`${PLANET}/earth_clouds_1024.png`);
+    cloudTex.colorSpace = THREE.SRGBColorSpace;
+    const cloudMat = new THREE.MeshBasicMaterial({
+      map: cloudTex,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.28,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
     const clouds = new THREE.Mesh(cloudGeo, cloudMat);
     earthGroup.add(clouds);
@@ -367,7 +369,7 @@ function GlobeScene({
     const atmos = new THREE.Mesh(atmosGeo, atmosMat);
     scene.add(atmos);
 
-    // Outer halo — back-side rim glow
+    // ── Outer halo — back-side rim glow ───────────────────────────────────
     const haloGeo = new THREE.SphereGeometry(5.9, 72, 72);
     const haloMat = new THREE.ShaderMaterial({
       vertexShader: /* glsl */ `
@@ -392,19 +394,10 @@ function GlobeScene({
     const halo = new THREE.Mesh(haloGeo, haloMat);
     scene.add(halo);
 
-    // ── Lighting ───────────────────────────────────────────────────────────
-    // Deep-space ambient (slightly blue-tinted)
-    scene.add(new THREE.AmbientLight(0x0d1a33, 1.5));
-
-    // Sun — primary directional light
-    const sunLight = new THREE.DirectionalLight(0xfff8e8, 3.2);
-    sunLight.position.set(9, 4, 6);
-    scene.add(sunLight);
-
-    // Earthshine — very dim blue from the unlit side
-    const earthshine = new THREE.DirectionalLight(0x1a3366, 0.3);
-    earthshine.position.set(-9, -3, -6);
-    scene.add(earthshine);
+    // ── No directional lighting needed — BasicMaterial is self-illuminated ──
+    // A tiny ambient light is kept only for any future MeshStandardMaterial
+    // helpers (markers use BasicMaterial too, so this has no visual effect).
+    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
     // ── Stars — spherical shell distribution ───────────────────────────────
     const STAR_COUNT = 3500;
@@ -413,7 +406,7 @@ function GlobeScene({
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const r = 200 + Math.random() * 200;
-      starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      starPos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
       starPos[i * 3 + 1] = r * Math.cos(phi);
       starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
@@ -434,7 +427,7 @@ function GlobeScene({
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const r = 350 + Math.random() * 100;
-      bgStarPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      bgStarPos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
       bgStarPos[i * 3 + 1] = r * Math.cos(phi);
       bgStarPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
@@ -443,7 +436,13 @@ function GlobeScene({
     scene.add(
       new THREE.Points(
         bgStarGeo,
-        new THREE.PointsMaterial({ color: 0xaabbdd, size: 0.5, transparent: true, opacity: 0.35, sizeAttenuation: true }),
+        new THREE.PointsMaterial({
+          color: 0xaabbdd,
+          size: 0.5,
+          transparent: true,
+          opacity: 0.35,
+          sizeAttenuation: true,
+        }),
       ),
     );
 
@@ -546,7 +545,6 @@ function GlobeScene({
       if (hits.length > 0) {
         const id = (hits[0].object as THREE.Mesh).userData.countryId as string;
         onCountryClick(id);
-        // Pause auto-rotation briefly so user can orient themselves
         controls.autoRotate = false;
         setTimeout(() => { controls.autoRotate = true; }, 6000);
       }
@@ -574,7 +572,6 @@ function GlobeScene({
     };
     animate();
 
-    // Store refs for cleanup
     sceneRef.current = {
       scene, camera, renderer, earthGroup, clouds, atmos,
       markers, animationId, raycaster, mouse, controls,
@@ -929,7 +926,6 @@ function MapSection({
   return (
     <section ref={sectionRef} className="relative py-20 bg-[#050505]" id="map-section">
       <div className="max-w-7xl mx-auto px-4">
-        {/* Section header */}
         <div className="text-center mb-12">
           <h2 className="map-title text-3xl md:text-5xl font-bold text-white mb-4">
             Interactive{' '}
@@ -940,17 +936,13 @@ function MapSection({
           </p>
         </div>
 
-        {/* Desktop: Globe (flex-1) + Country list (fixed-width sidebar) */}
         <div className="flex gap-5 items-stretch">
-          {/* Globe container */}
           <div className="flex-1 relative rounded-3xl overflow-hidden border border-white/[0.08] bg-[#030308]" style={{ minHeight: 560, height: 'clamp(560px, 70vh, 720px)' }}>
-            {/* Subtle inner-border glow */}
             <div className="absolute inset-0 rounded-3xl pointer-events-none z-10"
               style={{ boxShadow: 'inset 0 0 60px rgba(99,102,241,0.06)' }} />
             <GlobeScene activeCountry={activeCountry} onCountryClick={onCountrySelect} />
           </div>
 
-          {/* Country list — desktop sidebar */}
           <div
             className="hidden lg:flex flex-col gap-1.5 shrink-0 overflow-y-auto pr-0.5"
             style={{ width: 220, maxHeight: 'clamp(560px, 70vh, 720px)' }}
@@ -991,7 +983,6 @@ function MapSection({
           </div>
         </div>
 
-        {/* Mobile: scrollable country pill-buttons below globe */}
         <div className="flex flex-wrap gap-2 mt-4 lg:hidden">
           {COUNTRIES.map((country) => (
             <button
