@@ -1,4 +1,4 @@
-import Hero from '../sections/Hero';
+import Hero from '../components/Hero';
 import CarReveal from '../sections/CarReveal';
 import TrustBar from '../sections/TrustBar';
 import MarqueeDestinations from '../sections/MarqueeDestinations';

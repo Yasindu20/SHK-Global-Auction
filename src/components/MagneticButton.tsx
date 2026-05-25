@@ -18,7 +18,7 @@ export default function MagneticButton({
   as: Tag = 'div',
   href
 }: MagneticButtonProps) {
-  const ref = useRef<<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
 
   const x = useMotionValue(0);
@@ -45,7 +45,23 @@ export default function MagneticButton({
     y.set(0);
   };
 
-  const MotionTag = motion[Tag] as typeof motion.div;
+  const innerProps = {
+    onClick,
+    className,
+    animate: { scale: isHovered ? 1.04 : 1 },
+    whileTap: { scale: 0.96 },
+    transition: { type: 'spring' as const, stiffness: 400, damping: 25 },
+  };
+
+  const renderInner = () => {
+    if (Tag === 'a') {
+      return <motion.a href={href} {...innerProps}>{children}</motion.a>;
+    }
+    if (Tag === 'button') {
+      return <motion.button type="button" {...innerProps}>{children}</motion.button>;
+    }
+    return <motion.div {...innerProps}>{children}</motion.div>;
+  };
 
   return (
     <motion.div
@@ -56,18 +72,7 @@ export default function MagneticButton({
       onMouseLeave={handleMouseLeave}
       className="inline-block"
     >
-      <MotionTag
-        href={href}
-        onClick={onClick}
-        className={className}
-        animate={{
-          scale: isHovered ? 1.04 : 1,
-        }}
-        whileTap={{ scale: 0.96 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      >
-        {children}
-      </MotionTag>
+      {renderInner()}
     </motion.div>
   );
 }

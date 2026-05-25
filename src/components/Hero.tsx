@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ChevronRight, Play } from 'lucide-react';
 import HeroBackground from './HeroBackground';
 import HeroCarousel from './HeroCarousel';
@@ -43,7 +43,10 @@ const heroSlides: HeroSlide[] = [
   }
 ];
 
-const slideVariants = {
+// Cubic bezier tuples typed explicitly so framer-motion accepts them
+const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as [number, number, number, number];
+
+const slideVariants: Variants = {
   enter: (direction: number) => ({
     x: direction > 0 ? 200 : -200,
     opacity: 0,
@@ -57,7 +60,7 @@ const slideVariants = {
     rotateY: 0,
     transition: {
       duration: 0.9,
-      ease: [0.16, 1, 0.3, 1]
+      ease: EASE_OUT_EXPO
     }
   },
   exit: (direction: number) => ({
@@ -67,7 +70,7 @@ const slideVariants = {
     rotateY: direction > 0 ? -10 : 10,
     transition: {
       duration: 0.7,
-      ease: [0.16, 1, 0.3, 1]
+      ease: EASE_OUT_EXPO
     }
   })
 };
@@ -91,11 +94,11 @@ function SplitText({ text, className }: { text: string; className?: string }) {
 }
 
 export default function Hero() {
-  const containerRef = useRef<<HTMLDivElement>(null);
-  const textLayerRef = useRef<<HTMLDivElement>(null);
-  const imageLayerRef = useRef<<HTMLDivElement>(null);
-  const ctaRef = useRef<<HTMLDivElement>(null);
-  const scrollIndicatorRef = useRef<<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
+  const imageLayerRef = useRef<HTMLDivElement>(null);
+  const ctaRef = useRef<HTMLDivElement>(null);
+  const scrollIndicatorRef = useRef<HTMLDivElement>(null);
 
   const [[slidePage, slideDirection], setSlidePage] = useState([0, 0]);
   const slideIndex = ((slidePage % heroSlides.length) + heroSlides.length) % heroSlides.length;
@@ -143,7 +146,7 @@ export default function Hero() {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [handleMouseMove]);
 
-  // GSAP Master Timeline
+  // GSAP Master Timeline — scope is the containerRef (correctly typed now)
   useGSAP(() => {
     const tl = gsap.timeline({
       defaults: { ease: 'power4.out' },

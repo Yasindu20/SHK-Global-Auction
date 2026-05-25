@@ -73,7 +73,7 @@ const fragmentShader = `
 `;
 
 export default function HeroBackground() {
-  const canvasRef = useRef<<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;

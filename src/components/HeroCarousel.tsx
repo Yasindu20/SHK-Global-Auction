@@ -2,6 +2,12 @@ import { useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { animate } from 'animejs';
 
+// animejs v4 returns a JSAnimation object — define the subset we need
+interface AnimeAnimation {
+  pause(): void;
+  play(): void;
+}
+
 interface CarItem {
   name: string;
   year: string;
@@ -42,8 +48,8 @@ const cars: CarItem[] = [
 ];
 
 export default function HeroCarousel() {
-  const trackRef = useRef<<HTMLDivElement>(null);
-  const animationRef = useRef<<ReturnType<<typeof animate> | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<AnimeAnimation | null>(null);
 
   const setupAnimation = useCallback(() => {
     const track = trackRef.current;
@@ -51,7 +57,7 @@ export default function HeroCarousel() {
 
     const originalItems = track.querySelectorAll('[data-carousel-item="original"]');
     const clones = track.querySelectorAll('[data-carousel-item="clone"]');
-    clones.forEach(c => c.remove());
+    clones.forEach((c: Element) => c.remove());
 
     if (originalItems.length === 0) return;
 
@@ -59,21 +65,23 @@ export default function HeroCarousel() {
     const itemWidth = firstItem.offsetWidth + 24;
     const totalWidth = itemWidth * originalItems.length;
 
-    originalItems.forEach(item => {
+    originalItems.forEach((item: Element) => {
       const clone = item.cloneNode(true) as HTMLElement;
       clone.setAttribute('data-carousel-item', 'clone');
       track.appendChild(clone);
     });
 
+    // Reset position instantly
     animate(track, { translateX: 0, duration: 0 });
 
+    // Start continuous scroll — cast to our interface since @types/animejs lags behind v4
     animationRef.current = animate(track, {
       translateX: -totalWidth,
       duration: 40000,
       ease: 'linear',
       loop: true,
       autoplay: true
-    });
+    }) as unknown as AnimeAnimation;
   }, []);
 
   useEffect(() => {
