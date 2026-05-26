@@ -204,6 +204,17 @@ app.get('/api/listings', async (_req, res) => {
   }
 });
 
+// NOTE: This specific route MUST come before /api/listings/:id
+// otherwise Express will try to match "all" as an :id parameter.
+app.get('/api/listings/all', requireAdmin, async (_req, res) => {
+  try {
+    const listings = await Listing.find().sort({ timestamp: -1 });
+    res.json(listings);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch listings' });
+  }
+});
+
 app.get('/api/listings/:id', async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -217,15 +228,6 @@ app.get('/api/listings/:id', async (req, res) => {
 });
 
 // ─── Protected admin-only endpoints (require valid admin JWT) ─────────────────
-
-app.get('/api/listings/all', requireAdmin, async (_req, res) => {
-  try {
-    const listings = await Listing.find().sort({ timestamp: -1 });
-    res.json(listings);
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch listings' });
-  }
-});
 
 app.post('/api/listings/approve/:id', requireAdmin, async (req, res) => {
   try {
@@ -415,7 +417,8 @@ app.get('/api/crawl-logs', requireAdmin, (req, res) => {
 });
 
 // ─── Catch-all: 404 for unknown API routes ────────────────────────────────────
-app.use('/api/*', (_req, res) => {
+// NOTE: Express v5 requires named wildcards — '/api/*' is invalid, use '/api/*path'
+app.use('/api/*path', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 

@@ -67,11 +67,12 @@ const UserSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
-UserSchema.pre<IUser>('save', async function (next) {
-  if (!this.isModified('password')) return next();
+// ── Hash password before saving ───────────────────────────────────────────────
+// Using async without `next` — required for Mongoose v9 + TypeScript compatibility.
+// Mongoose v9 resolves the hook automatically when the function is async.
+UserSchema.pre<IUser>('save', async function () {
+  if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // Constant-time password comparison

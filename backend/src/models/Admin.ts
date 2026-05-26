@@ -52,11 +52,12 @@ const AdminSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
-AdminSchema.pre<IAdmin>('save', async function (next) {
-  if (!this.isModified('password')) return next();
+// ── Hash password before saving ───────────────────────────────────────────────
+// Using async without `next` — required for Mongoose v9 + TypeScript compatibility.
+// Mongoose v9 resolves the hook automatically when the function is async.
+AdminSchema.pre<IAdmin>('save', async function () {
+  if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // Check if account is currently locked
