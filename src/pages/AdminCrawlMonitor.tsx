@@ -1,16 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import {
-  Zap,
-  Radio,
-  StopCircle,
-  Database,
-  CheckCircle,
-  XCircle,
-  Copy,
-  RotateCcw,
-  AlertCircle,
-  ChevronDown,
-} from 'lucide-react';
+import { Zap, Radio, StopCircle, Database, CheckCircle, XCircle, Copy, RotateCcw, AlertCircle, ChevronDown } from 'lucide-react';
+import { useAdminAuth } from '../contexts/AuthContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const SCRAPE_MIN_YEAR = 2024;
@@ -31,16 +21,17 @@ interface CrawlStatus {
 }
 
 export default function AdminCrawlMonitor() {
-  const [status, setStatus] = useState<CrawlStatus | null>(null);
-  const [msg, setMsg] = useState('');
+  const { getAdminAuthHeader } = useAdminAuth();
+  const [status, setStatus]       = useState<CrawlStatus | null>(null);
+  const [msg, setMsg]             = useState('');
   const [concurrency, setConcurrency] = useState(6);
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig]   = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`${API}/api/crawl-status`);
-      setStatus(await res.json());
+      const res = await fetch(`${API}/api/crawl-status`, { headers: getAdminAuthHeader() });
+      if (res.ok) setStatus(await res.json());
     } catch {}
   };
 
@@ -59,8 +50,13 @@ export default function AdminCrawlMonitor() {
     try {
       const res = await fetch(`${API}/api/crawl-batch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supplier: 'STC Japan', minYear: SCRAPE_MIN_YEAR, maxYear: SCRAPE_MAX_YEAR, concurrency }),
+        headers: { 'Content-Type': 'application/json', ...getAdminAuthHeader() },
+        body: JSON.stringify({
+          supplier: 'STC Japan',
+          minYear: SCRAPE_MIN_YEAR,
+          maxYear: SCRAPE_MAX_YEAR,
+          concurrency,
+        }),
       });
       const data = await res.json();
       setMsg(res.ok ? data.message : data.error || 'Failed');
@@ -71,22 +67,25 @@ export default function AdminCrawlMonitor() {
   };
 
   const stopCrawl = async () => {
-    await fetch(`${API}/api/crawl-stop`, { method: 'POST' });
+    await fetch(`${API}/api/crawl-stop`, {
+      method: 'POST',
+      headers: getAdminAuthHeader(),
+    });
     fetchStatus();
   };
 
   const phaseLabel: Record<string, string> = {
-    idle: 'Idle',
+    idle:       'Idle',
     collecting: 'Phase 1 — Collecting links',
-    scraping: 'Phase 2 — Scraping details',
-    done: 'Complete',
+    scraping:   'Phase 2 — Scraping details',
+    done:       'Complete',
   };
 
   const logColor = (line: string) => {
-    if (line.includes('✅')) return '#22C55E';
-    if (line.includes('❌') || line.includes('💥')) return '#EF4444';
-    if (line.includes('⏭') || line.includes('🔁')) return '#6B7280';
-    if (line.includes('Phase 2') || line.includes('⚡')) return '#60A5FA';
+    if (line.includes('✅'))                                   return '#22C55E';
+    if (line.includes('❌') || line.includes('💥'))            return '#EF4444';
+    if (line.includes('⏭') || line.includes('🔁'))            return '#6B7280';
+    if (line.includes('Phase 2') || line.includes('⚡'))       return '#60A5FA';
     if (line.includes('🚀') || line.includes('📄') || line.includes('🔍')) return '#D4A853';
     return '#9CA3AF';
   };
@@ -127,10 +126,7 @@ export default function AdminCrawlMonitor() {
       </div>
 
       {/* Status Overview */}
-      <div
-        className="rounded-xl p-5"
-        style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
+      <div className="rounded-xl p-5" style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div
@@ -162,16 +158,12 @@ export default function AdminCrawlMonitor() {
         {/* Stats row */}
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Added', value: status?.added ?? 0, color: '#22C55E', icon: CheckCircle },
-            { label: 'Links Found', value: status?.totalLinks ?? 0, color: '#D4A853', icon: Database },
-            { label: 'Duplicates', value: status?.skipped ?? 0, color: '#9CA3AF', icon: RotateCcw },
-            { label: 'Failed', value: status?.failed ?? 0, color: '#EF4444', icon: XCircle },
+            { label: 'Added',       value: status?.added      ?? 0, color: '#22C55E', icon: CheckCircle },
+            { label: 'Links Found', value: status?.totalLinks ?? 0, color: '#D4A853', icon: Database    },
+            { label: 'Duplicates',  value: status?.skipped    ?? 0, color: '#9CA3AF', icon: RotateCcw   },
+            { label: 'Failed',      value: status?.failed     ?? 0, color: '#EF4444', icon: XCircle     },
           ].map(({ label, value, color, icon: Icon }) => (
-            <div
-              key={label}
-              className="rounded-lg p-3 text-center"
-              style={{ background: 'rgba(255,255,255,0.03)' }}
-            >
+            <div key={label} className="rounded-lg p-3 text-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
               <Icon size={14} style={{ color, margin: '0 auto 6px' }} />
               <p className="text-xl font-bold text-white">{value}</p>
               <p style={{ color: '#6B7280', fontSize: '0.7rem', marginTop: 2 }}>{label}</p>
@@ -200,10 +192,7 @@ export default function AdminCrawlMonitor() {
       </div>
 
       {/* Config */}
-      <div
-        className="rounded-xl"
-        style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
+      <div className="rounded-xl" style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}>
         <button
           onClick={() => setShowConfig(!showConfig)}
           className="flex items-center justify-between w-full px-5 py-4"
@@ -211,22 +200,20 @@ export default function AdminCrawlMonitor() {
           <span className="text-sm font-semibold text-white">Configuration</span>
           <ChevronDown
             size={15}
-            style={{
-              color: '#6B7280',
-              transform: showConfig ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.2s',
-            }}
+            style={{ color: '#6B7280', transform: showConfig ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
           />
         </button>
         {showConfig && (
           <div className="px-5 pb-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
             {[
-              { label: 'Supplier', value: 'STC Japan', editable: false },
-              { label: 'Year Range', value: `${SCRAPE_MIN_YEAR} – ${SCRAPE_MAX_YEAR}`, editable: false },
-              { label: 'Concurrency', value: concurrency, editable: true },
+              { label: 'Supplier',    value: 'STC Japan',                  editable: false },
+              { label: 'Year Range',  value: `${SCRAPE_MIN_YEAR} – ${SCRAPE_MAX_YEAR}`, editable: false },
+              { label: 'Concurrency', value: concurrency,                   editable: true  },
             ].map(({ label, value, editable }) => (
               <div key={label}>
-                <p style={{ color: '#6B7280', fontSize: '0.72rem', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</p>
+                <p style={{ color: '#6B7280', fontSize: '0.72rem', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {label}
+                </p>
                 {editable ? (
                   <select
                     value={concurrency}
@@ -234,7 +221,9 @@ export default function AdminCrawlMonitor() {
                     className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
                   >
-                    {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} scrapers</option>)}
+                    {[2, 3, 4, 5, 6, 7, 8].map(n => (
+                      <option key={n} value={n}>{n} scrapers</option>
+                    ))}
                   </select>
                 ) : (
                   <p className="text-sm font-medium text-white">{value}</p>
@@ -246,10 +235,7 @@ export default function AdminCrawlMonitor() {
       </div>
 
       {/* Log output */}
-      <div
-        className="rounded-xl"
-        style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
+      <div className="rounded-xl" style={{ background: '#141414', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div
           className="flex items-center justify-between px-5 py-3"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
