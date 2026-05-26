@@ -16,12 +16,12 @@ import {
 import { type Vehicle } from '../data/vehicles';
 import Footer from '../sections/Footer';
 
-const API = 'http://localhost:5000';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // ─── Year range config — change these to adjust what gets scraped ─────────────
 const SCRAPE_MIN_YEAR = 2024;
 const SCRAPE_MAX_YEAR = 2026;
-const SCRAPE_CONCURRENCY = 6; // safe for ~18 pages; raise to 8 max if needed
+const SCRAPE_CONCURRENCY = 6;
 
 interface CrawlStatus {
   running: boolean;
@@ -44,6 +44,7 @@ export default function Inventory() {
   const [search, setSearch]             = useState('');
   const [allVehicles, setAllVehicles]   = useState<Vehicle[]>([]);
   const [loading, setLoading]           = useState(true);
+  const [fetchError, setFetchError]     = useState('');
   const [showFilters, setShowFilters]   = useState(false);
   const [showCrawlPanel, setShowCrawlPanel] = useState(false);
   const [crawlStatus, setCrawlStatus]   = useState<CrawlStatus | null>(null);
@@ -83,11 +84,20 @@ export default function Inventory() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
+      setFetchError('');
       const res  = await fetch(`${API}/api/listings`);
       const data = await res.json();
-      setAllVehicles(data);
+      // Guard: only set state if the response is actually an array
+      if (Array.isArray(data)) {
+        setAllVehicles(data);
+      } else {
+        setAllVehicles([]);
+        if (data?.error) setFetchError(data.error);
+      }
     } catch (e) {
       console.error('Failed to fetch vehicles:', e);
+      setAllVehicles([]);
+      setFetchError('Could not reach the server. Make sure the backend is running.');
     } finally {
       setLoading(false);
     }
@@ -97,10 +107,11 @@ export default function Inventory() {
   const fetchCrawlStatus = async () => {
     try {
       const res  = await fetch(`${API}/api/crawl-status`);
+      if (!res.ok) return;
       const data = await res.json();
       setCrawlStatus(data);
     } catch {
-      /* ignore */
+      /* ignore — backend may be down */
     }
   };
 
@@ -143,8 +154,8 @@ export default function Inventory() {
         body: JSON.stringify({
           supplier:    'STC Japan',
           minYear:     SCRAPE_MIN_YEAR,
-          maxYear:     SCRAPE_MAX_YEAR,      // ← now passed to backend
-          concurrency: SCRAPE_CONCURRENCY,   // ← 6 instead of 4
+          maxYear:     SCRAPE_MAX_YEAR,
+          concurrency: SCRAPE_CONCURRENCY,
         }),
       });
       const data = await res.json();
@@ -272,6 +283,24 @@ export default function Inventory() {
             </div>
           </div>
 
+          {/* ── Backend error notice ─────────────────────────────────────────────── */}
+          {fetchError && (
+            <div
+              className="mt-4 flex items-center gap-3 p-3 rounded-lg text-sm"
+              style={{
+                backgroundColor: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.2)',
+                color: '#fca5a5',
+              }}
+            >
+              <AlertCircle size={15} style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Backend error:</strong> {fetchError}. Make sure the server is running on{' '}
+                <code style={{ opacity: 0.8 }}>{API}</code>.
+              </span>
+            </div>
+          )}
+
           {/* ── Crawl monitor panel ─────────────────────────────────────────────── */}
           {showCrawlPanel && (
             <div
@@ -337,10 +366,7 @@ export default function Inventory() {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <Database size={13} style={{ color: 'var(--amber)' }} />
-                      <span
-                        className="text-xs font-medium"
-                        style={{ color: 'var(--amber)' }}
-                      >
+                      <span className="text-xs font-medium" style={{ color: 'var(--amber)' }}>
                         Phase 1 — Link Collection
                       </span>
                     </div>
@@ -348,20 +374,14 @@ export default function Inventory() {
                       Server-filtered by year — no detail pages visited
                     </p>
                     {crawlStatus.totalLinks > 0 && (
-                      <p
-                        className="mt-1 font-bold text-sm"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
+                      <p className="mt-1 font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
                         {crawlStatus.totalLinks} listings found
                       </p>
                     )}
                   </div>
 
                   {/* Arrow */}
-                  <div
-                    className="flex items-center"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
+                  <div className="flex items-center" style={{ color: 'var(--text-secondary)' }}>
                     →
                   </div>
 
@@ -382,10 +402,7 @@ export default function Inventory() {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <Zap size={13} style={{ color: '#60a5fa' }} />
-                      <span
-                        className="text-xs font-medium"
-                        style={{ color: '#60a5fa' }}
-                      >
+                      <span className="text-xs font-medium" style={{ color: '#60a5fa' }}>
                         Phase 2 — Parallel Scrape
                       </span>
                     </div>
@@ -393,10 +410,7 @@ export default function Inventory() {
                       {SCRAPE_CONCURRENCY} concurrent scrapers — detail pages only
                     </p>
                     {crawlStatus.phase === 'scraping' && (
-                      <p
-                        className="mt-1 font-bold text-sm"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
+                      <p className="mt-1 font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
                         {crawlStatus.added} saved so far
                       </p>
                     )}
@@ -417,10 +431,7 @@ export default function Inventory() {
                       <span className="text-xl font-bold" style={{ color: s.color }}>
                         {s.value}
                       </span>
-                      <span
-                        className="block text-xs"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
+                      <span className="block text-xs" style={{ color: 'var(--text-secondary)' }}>
                         {s.label}
                       </span>
                     </div>
@@ -603,10 +614,7 @@ export default function Inventory() {
                 onChange={(v) => setFilters((p) => ({ ...p, fuel: v }))}
               />
               <div>
-                <span
-                  className="text-label block mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
+                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>
                   Year Min
                 </span>
                 <input
@@ -623,10 +631,7 @@ export default function Inventory() {
                 />
               </div>
               <div>
-                <span
-                  className="text-label block mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
+                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>
                   Year Max
                 </span>
                 <input
@@ -643,10 +648,7 @@ export default function Inventory() {
                 />
               </div>
               <div>
-                <span
-                  className="text-label block mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
+                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>
                   Max Price ($)
                 </span>
                 <input
@@ -663,10 +665,7 @@ export default function Inventory() {
                 />
               </div>
               <div>
-                <span
-                  className="text-label block mb-1"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
+                <span className="text-label block mb-1" style={{ color: 'var(--text-secondary)' }}>
                   Max Mileage (km)
                 </span>
                 <input
@@ -717,11 +716,7 @@ export default function Inventory() {
       <div className="container-main py-8">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <Loader2
-              size={32}
-              className="animate-spin"
-              style={{ color: 'var(--amber)' }}
-            />
+            <Loader2 size={32} className="animate-spin" style={{ color: 'var(--amber)' }} />
             <p style={{ color: 'var(--text-secondary)' }}>Loading inventory…</p>
           </div>
         ) : (
@@ -752,7 +747,9 @@ export default function Inventory() {
               <div className="text-center py-20">
                 <p className="text-h4" style={{ color: 'var(--text-secondary)' }}>
                   {allVehicles.length === 0
-                    ? `No vehicles yet. Click "Scrape STC Japan (${SCRAPE_MIN_YEAR}–${SCRAPE_MAX_YEAR})" to import data.`
+                    ? fetchError
+                      ? 'Could not load inventory — see the error above.'
+                      : `No vehicles yet. Click "Scrape STC Japan (${SCRAPE_MIN_YEAR}–${SCRAPE_MAX_YEAR})" to import data.`
                     : 'No vehicles match your filters.'}
                 </p>
                 {allVehicles.length > 0 && (
