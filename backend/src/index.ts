@@ -1,5 +1,5 @@
 import dns from 'dns';
-dns.setServers(['8.8.8.8', '8.8.4.4']); 
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 dns.setDefaultResultOrder('ipv4first');
 
 import express from 'express';
@@ -8,7 +8,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import mongoSanitize from 'express-mongo-sanitize';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import multer from 'multer';
@@ -24,7 +23,7 @@ dotenv.config();
 
 const app = express();
 
-// ─── Trust proxy (needed for correct rate-limit IP detection behind Nginx/CDN) ──
+// ─── Trust proxy ──────────────────────────────────────────────────────────────
 app.set('trust proxy', 1);
 
 // ─── Security: HTTP Headers via Helmet ────────────────────────────────────────
@@ -41,7 +40,7 @@ app.use(
         objectSrc: ["'none'"],
       },
     },
-    crossOriginEmbedderPolicy: false, // Allow embedding images from external sources
+    crossOriginEmbedderPolicy: false,
     hsts: {
       maxAge: 31536000,
       includeSubDomains: true,
@@ -50,7 +49,7 @@ app.use(
   })
 );
 
-// ─── Security: CORS — explicit allowed origins ────────────────────────────────
+// ─── Security: CORS ────────────────────────────────────────────────────────────
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim());
@@ -58,7 +57,6 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (server-to-server, curl, etc.) only in dev
       if (!origin && process.env.NODE_ENV !== 'production') {
         return callback(null, true);
       }
@@ -67,7 +65,7 @@ app.use(
       }
       callback(new Error(`CORS: origin '${origin}' not allowed`));
     },
-    credentials: true, // Required for cookies
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
@@ -78,10 +76,34 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 
-// ─── Security: Prevent NoSQL injection ───────────────────────────────────────
-app.use(mongoSanitize({ replaceWith: '_' }));
+// ─── NoSQL injection sanitization ────────────────────────────────────────────
+// express-mongo-sanitize is incompatible with Express v5 because it tries to
+// overwrite req.query, which is now a read-only getter. This custom middleware
+// does the same job (strips $ keys and dots) without touching req.query.
+function sanitizeValue(val: unknown): unknown {
+  if (Array.isArray(val)) return val.map(sanitizeValue);
+  if (val !== null && typeof val === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      // Replace keys starting with $ or containing dots
+      const safeKey = k.startsWith('$') || k.includes('.')
+        ? k.replace(/^\$+/, '_').replace(/\./g, '_')
+        : k;
+      out[safeKey] = sanitizeValue(v);
+    }
+    return out;
+  }
+  return val;
+}
 
-// ─── HTTP Request logging (skip health checks) ────────────────────────────────
+app.use((req, _res, next) => {
+  if (req.body)   req.body   = sanitizeValue(req.body);
+  if (req.params) req.params = sanitizeValue(req.params) as Record<string, string>;
+  // NOTE: req.query is a read-only getter in Express v5 — do not reassign it.
+  next();
+});
+
+// ─── HTTP Request logging ─────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
   app.use(
     morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
@@ -90,7 +112,7 @@ if (process.env.NODE_ENV !== 'test') {
   );
 }
 
-// ─── Global rate limit: 120 req / 15 min per IP ───────────────────────────────
+// ─── Global rate limit ────────────────────────────────────────────────────────
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -129,7 +151,6 @@ const storage = multer.diskStorage({
   },
 });
 
-// Restrict to image files only
 const fileFilter = (
   _req: express.Request,
   file: Express.Multer.File,
@@ -187,12 +208,12 @@ function broadcastLog(msg: string) {
   }
 }
 
-// ─── Health check (public) ────────────────────────────────────────────────────
+// ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── Auth routes (public) ─────────────────────────────────────────────────────
+// ─── Auth routes ──────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 
 // ─── Public listing endpoints ─────────────────────────────────────────────────
@@ -205,8 +226,7 @@ app.get('/api/listings', async (_req, res) => {
   }
 });
 
-// NOTE: This specific route MUST come before /api/listings/:id
-// otherwise Express will try to match "all" as an :id parameter.
+// NOTE: must come before /api/listings/:id
 app.get('/api/listings/all', requireAdmin, async (_req, res) => {
   try {
     const listings = await Listing.find().sort({ timestamp: -1 });
@@ -228,7 +248,7 @@ app.get('/api/listings/:id', async (req, res) => {
   }
 });
 
-// ─── Protected admin-only endpoints (require valid admin JWT) ─────────────────
+// ─── Protected admin endpoints ────────────────────────────────────────────────
 
 app.post('/api/listings/approve/:id', requireAdmin, async (req, res) => {
   try {
@@ -417,8 +437,7 @@ app.get('/api/crawl-logs', requireAdmin, (req, res) => {
   });
 });
 
-// ─── Catch-all: 404 for unknown API routes ────────────────────────────────────
-// NOTE: Express v5 requires named wildcards — '/api/*' is invalid, use '/api/*path'
+// ─── 404 for unknown API routes ───────────────────────────────────────────────
 app.use('/api/*path', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
