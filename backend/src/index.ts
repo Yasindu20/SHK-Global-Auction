@@ -1,51 +1,152 @@
 import dns from 'dns';
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+dns.setServers(['8.8.8.8', '8.8.4.4']); 
+dns.setDefaultResultOrder('ipv4first');
 
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import cookieParser from 'cookie-parser';
+import morgan from 'morgan';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+
 import Listing from './models/Listing';
 import { STCJapanParser } from './crawler/STCJapanParser';
+import { requireAdmin } from './middleware/auth';
+import authRouter from './routes/auth';
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// ─── Static Files for Uploads ────────────────────────────────────────────────
+// ─── Trust proxy (needed for correct rate-limit IP detection behind Nginx/CDN) ──
+app.set('trust proxy', 1);
+
+// ─── Security: HTTP Headers via Helmet ────────────────────────────────────────
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Allow embedding images from external sources
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  })
+);
+
+// ─── Security: CORS — explicit allowed origins ────────────────────────────────
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim());
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (server-to-server, curl, etc.) only in dev
+      if (!origin && process.env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    },
+    credentials: true, // Required for cookies
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
+// ─── Body parsing ─────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(cookieParser(process.env.COOKIE_SECRET));
+
+// ─── Security: Prevent NoSQL injection ───────────────────────────────────────
+app.use(mongoSanitize({ replaceWith: '_' }));
+
+// ─── HTTP Request logging (skip health checks) ────────────────────────────────
+if (process.env.NODE_ENV !== 'test') {
+  app.use(
+    morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+      skip: (req) => req.url === '/health',
+    })
+  );
+}
+
+// ─── Global rate limit: 120 req / 15 min per IP ───────────────────────────────
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please slow down.' },
+  })
+);
+
+// ─── Static uploads ───────────────────────────────────────────────────────────
 const UPLOADS_DIR = path.join(__dirname, '../../public/uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 app.use('/uploads', express.static(UPLOADS_DIR));
 
+// ─── MongoDB connection ───────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/car_auction';
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error('MongoDB connection error:', err));
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
 
-// ─── Multer Disk Storage ─────────────────────────────────────────────────────
+// ─── Multer Disk Storage ──────────────────────────────────────────────────────
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, UPLOADS_DIR);
-  },
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+  },
 });
 
-const upload = multer({ storage });
+// Restrict to image files only
+const fileFilter = (
+  _req: express.Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
+  const allowed = /jpeg|jpg|png|webp|gif/;
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowed.test(ext) && allowed.test(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed'));
+  }
+};
 
-// ─── Track active crawl state ─────────────────────────────────────────────────
+const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } });
+
+// ─── Crawl state ──────────────────────────────────────────────────────────────
 interface CrawlState {
   running: boolean;
   logs: string[];
@@ -61,15 +162,15 @@ interface CrawlState {
 }
 
 const crawlState: CrawlState = {
-  running:    false,
-  logs:       [],
-  added:      0,
-  skipped:    0,
-  failed:     0,
+  running: false,
+  logs: [],
+  added: 0,
+  skipped: 0,
+  failed: 0,
   totalLinks: 0,
-  phase:      'idle',
-  minYear:    2024,
-  maxYear:    2026,
+  phase: 'idle',
+  minYear: 2024,
+  maxYear: 2026,
 };
 
 const sseClients: express.Response[] = [];
@@ -77,17 +178,24 @@ const sseClients: express.Response[] = [];
 function broadcastLog(msg: string) {
   crawlState.logs.push(msg);
   if (crawlState.logs.length > 500) crawlState.logs.shift();
-
   for (const client of sseClients) {
     try {
       client.write(`data: ${JSON.stringify({ log: msg })}\n\n`);
-    } catch {
-      // client disconnected
+    } catch (_) {
+      /* client disconnected */
     }
   }
 }
 
-// ─── API: listings ────────────────────────────────────────────────────────────
+// ─── Health check (public) ────────────────────────────────────────────────────
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ─── Auth routes (public) ─────────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
+
+// ─── Public listing endpoints ─────────────────────────────────────────────────
 app.get('/api/listings', async (_req, res) => {
   try {
     const listings = await Listing.find({ status: 'approved' }).sort({ timestamp: -1 });
@@ -97,7 +205,9 @@ app.get('/api/listings', async (_req, res) => {
   }
 });
 
-app.get('/api/listings/all', async (_req, res) => {
+// NOTE: This specific route MUST come before /api/listings/:id
+// otherwise Express will try to match "all" as an :id parameter.
+app.get('/api/listings/all', requireAdmin, async (_req, res) => {
   try {
     const listings = await Listing.find().sort({ timestamp: -1 });
     res.json(listings);
@@ -109,14 +219,18 @@ app.get('/api/listings/all', async (_req, res) => {
 app.get('/api/listings/:id', async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    if (!listing || listing.status !== 'approved') {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
     res.json(listing);
   } catch {
     res.status(500).json({ error: 'Failed to fetch listing' });
   }
 });
 
-app.post('/api/listings/approve/:id', async (req, res) => {
+// ─── Protected admin-only endpoints (require valid admin JWT) ─────────────────
+
+app.post('/api/listings/approve/:id', requireAdmin, async (req, res) => {
   try {
     const listing = await Listing.findByIdAndUpdate(
       req.params.id,
@@ -129,7 +243,7 @@ app.post('/api/listings/approve/:id', async (req, res) => {
   }
 });
 
-app.post('/api/listings/reject/:id', async (req, res) => {
+app.post('/api/listings/reject/:id', requireAdmin, async (req, res) => {
   try {
     const listing = await Listing.findByIdAndUpdate(
       req.params.id,
@@ -142,19 +256,27 @@ app.post('/api/listings/reject/:id', async (req, res) => {
   }
 });
 
-// ─── API: Manual Vehicle Creation ──────────────────────────────────────────────
-app.post('/api/vehicles', async (req, res) => {
+app.get('/api/stats', requireAdmin, async (_req, res) => {
   try {
-    const vehicleData = req.body;
-    const newVehicle = new Listing({
-      ...vehicleData,
-      status: 'approved',
-      timestamp: new Date()
-    });
+    const [total, approved, pending, rejected] = await Promise.all([
+      Listing.countDocuments(),
+      Listing.countDocuments({ status: 'approved' }),
+      Listing.countDocuments({ status: 'pending' }),
+      Listing.countDocuments({ status: 'rejected' }),
+    ]);
+    res.json({ total, approved, pending, rejected });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// Manual vehicle creation
+app.post('/api/vehicles', requireAdmin, async (req, res) => {
+  try {
+    const newVehicle = new Listing({ ...req.body, status: 'approved', timestamp: new Date() });
     await newVehicle.save();
     res.status(201).json(newVehicle);
   } catch (error: any) {
-    console.error('Error creating vehicle:', error);
     if (error.code === 11000) {
       res.status(400).json({ error: 'Duplicate vehicle (Stock ID already exists)' });
     } else {
@@ -163,31 +285,27 @@ app.post('/api/vehicles', async (req, res) => {
   }
 });
 
-// ─── API: Image Upload (Local Disk) ───────────────────────────────────────────
-app.post('/api/upload', upload.array('images', 15), (req, res) => {
+// Image upload
+app.post('/api/upload', requireAdmin, upload.array('images', 15), (req, res) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
     }
-    // Return relative paths that the frontend can use
-    const urls = files.map(file => `/uploads/${file.filename}`);
+    const urls = files.map((file) => `/uploads/${file.filename}`);
     res.json({ urls });
   } catch (error: any) {
-    console.error('Upload error:', error);
     res.status(500).json({ error: 'Failed to upload images', details: error.message });
   }
 });
 
-// ─── API: single URL crawl ────────────────────────────────────────────────────
-app.post('/api/crawl', async (req, res) => {
+// Single URL crawl
+app.post('/api/crawl', requireAdmin, async (req, res) => {
   const { url, supplier } = req.body;
-
   if (supplier === 'STC Japan') {
     const parser = new STCJapanParser();
-    const data   = await parser.scrape(url);
+    const data = await parser.scrape(url);
     await parser.close();
-
     if (data) {
       try {
         const newListing = new Listing({ ...data, status: 'approved' });
@@ -195,7 +313,7 @@ app.post('/api/crawl', async (req, res) => {
         res.json({ message: 'Crawl successful', data: newListing });
       } catch (error: any) {
         if (error.code === 11000) {
-          res.status(400).json({ error: 'Duplicate listing (Stock ID already exists)' });
+          res.status(400).json({ error: 'Duplicate listing' });
         } else {
           res.status(500).json({ error: 'Failed to save listing' });
         }
@@ -208,20 +326,13 @@ app.post('/api/crawl', async (req, res) => {
   }
 });
 
-// ─── API: bulk crawl (optimised 2-phase) ──────────────────────────────────────
-app.post('/api/crawl-batch', async (req, res) => {
+// Batch crawl
+app.post('/api/crawl-batch', requireAdmin, async (req, res) => {
   if (crawlState.running) {
-    return res
-      .status(409)
-      .json({ error: 'A crawl is already running. Check /api/crawl-status.' });
+    return res.status(409).json({ error: 'A crawl is already running.' });
   }
 
-  const {
-    supplier,
-    minYear     = 2024,
-    maxYear     = new Date().getFullYear() + 1,
-    concurrency = 6,
-  } = req.body;
+  const { supplier, minYear = 2024, maxYear = new Date().getFullYear() + 1, concurrency = 6 } = req.body;
 
   if (supplier !== 'STC Japan') {
     return res.status(400).json({ error: 'Unsupported supplier' });
@@ -229,31 +340,24 @@ app.post('/api/crawl-batch', async (req, res) => {
 
   const safeConc = Math.max(1, Math.min(concurrency, 8));
 
-  crawlState.running    = true;
-  crawlState.logs       = [];
-  crawlState.added      = 0;
-  crawlState.skipped    = 0;
-  crawlState.failed     = 0;
-  crawlState.totalLinks = 0;
-  crawlState.phase      = 'collecting';
-  crawlState.minYear    = minYear;
-  crawlState.maxYear    = maxYear;
-  crawlState.startedAt  = new Date();
-  crawlState.finishedAt = undefined;
-
-  res.json({
-    message:
-      `2-phase batch scrape started for STC Japan — ` +
-      `year ${minYear}–${maxYear}, concurrency ${safeConc}. ` +
-      `Stream logs at GET /api/crawl-logs or poll GET /api/crawl-status.`,
+  Object.assign(crawlState, {
+    running: true,
+    logs: [],
+    added: 0,
+    skipped: 0,
+    failed: 0,
+    totalLinks: 0,
+    phase: 'collecting',
+    minYear,
+    maxYear,
+    startedAt: new Date(),
+    finishedAt: undefined,
   });
+
+  res.json({ message: `2-phase batch scrape started. Poll GET /api/crawl-status.` });
 
   (async () => {
     const parser = new STCJapanParser();
-    broadcastLog(
-      `🚀 Starting optimised 2-phase crawl — year ${minYear}–${maxYear}, concurrency ${safeConc}`
-    );
-
     try {
       await parser.scrapeAllByYear(
         minYear,
@@ -266,63 +370,40 @@ app.post('/api/crawl-batch', async (req, res) => {
         (msg) => {
           broadcastLog(msg);
           if (msg.includes('Phase 2')) crawlState.phase = 'scraping';
-          const linkMatch = msg.match(/(\d+) unique listing/);
-          if (linkMatch) crawlState.totalLinks = parseInt(linkMatch[1]);
+          const m = msg.match(/(\d+) unique listing/);
+          if (m) crawlState.totalLinks = parseInt(m[1]);
           if (msg.includes('Duplicate') || msg.includes('⏭')) crawlState.skipped++;
-          if (msg.includes('Failed') || msg.includes('❌') || msg.includes('💥'))
-            crawlState.failed++;
+          if (msg.includes('Failed') || msg.includes('❌') || msg.includes('💥')) crawlState.failed++;
         },
         safeConc
       );
-
-      const summary =
-        `✅ Crawl finished — ` +
-        `Added: ${crawlState.added}, ` +
-        `Skipped/Dup: ${crawlState.skipped}, ` +
-        `Failed: ${crawlState.failed}, ` +
-        `Total links scraped: ${crawlState.totalLinks}`;
-      broadcastLog(summary);
+      broadcastLog(`✅ Crawl finished — Added: ${crawlState.added}, Skipped: ${crawlState.skipped}, Failed: ${crawlState.failed}`);
     } catch (err: any) {
-      const msg = `💥 Crawl crashed: ${err.message}`;
-      broadcastLog(msg);
+      broadcastLog(`💥 Crawl crashed: ${err.message}`);
     } finally {
       await parser.close();
-      crawlState.running    = false;
-      crawlState.phase      = 'done';
+      crawlState.running = false;
+      crawlState.phase = 'done';
       crawlState.finishedAt = new Date();
     }
   })();
 });
 
-app.post('/api/crawl-stop', (_req, res) => {
-  if (!crawlState.running) {
-    return res.json({ message: 'No crawl is running.' });
-  }
+app.post('/api/crawl-stop', requireAdmin, (_req, res) => {
+  if (!crawlState.running) return res.json({ message: 'No crawl running.' });
   crawlState.running = false;
-  broadcastLog('🛑 Stop signal received — finishing current batch then halting.');
-  res.json({ message: 'Stop signal sent. Current batch will finish first.' });
+  broadcastLog('🛑 Stop signal received.');
+  res.json({ message: 'Stop signal sent.' });
 });
 
-app.get('/api/crawl-status', (_req, res) => {
-  res.json({
-    running:    crawlState.running,
-    phase:      crawlState.phase,
-    added:      crawlState.added,
-    skipped:    crawlState.skipped,
-    failed:     crawlState.failed,
-    totalLinks: crawlState.totalLinks,
-    minYear:    crawlState.minYear,
-    maxYear:    crawlState.maxYear,
-    startedAt:  crawlState.startedAt,
-    finishedAt: crawlState.finishedAt,
-    recentLogs: crawlState.logs.slice(-50),
-  });
+app.get('/api/crawl-status', requireAdmin, (_req, res) => {
+  res.json({ ...crawlState, recentLogs: crawlState.logs.slice(-50) });
 });
 
-app.get('/api/crawl-logs', (req, res) => {
-  res.setHeader('Content-Type',  'text/event-stream');
+app.get('/api/crawl-logs', requireAdmin, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection',    'keep-alive');
+  res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
   for (const line of crawlState.logs) {
@@ -330,25 +411,26 @@ app.get('/api/crawl-logs', (req, res) => {
   }
 
   sseClients.push(res);
-
   req.on('close', () => {
     const idx = sseClients.indexOf(res);
     if (idx !== -1) sseClients.splice(idx, 1);
   });
 });
 
-app.get('/api/stats', async (_req, res) => {
-  try {
-    const total    = await Listing.countDocuments();
-    const approved = await Listing.countDocuments({ status: 'approved' });
-    const pending  = await Listing.countDocuments({ status: 'pending' });
-    const rejected = await Listing.countDocuments({ status: 'rejected' });
-    res.json({ total, approved, pending, rejected });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch stats' });
-  }
+// ─── Catch-all: 404 for unknown API routes ────────────────────────────────────
+// NOTE: Express v5 requires named wildcards — '/api/*' is invalid, use '/api/*path'
+app.use('/api/*path', (_req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// ─── Global error handler ─────────────────────────────────────────────────────
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Unhandled Error]', err.message);
+  res.status(500).json({
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+  });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
 });
