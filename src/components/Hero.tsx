@@ -20,6 +20,7 @@ interface HeroSlide {
   label: string;
 }
 
+// Static slides array - defined outside component to prevent re-creation on every render
 const heroSlides: HeroSlide[] = [
   {
     image: 'https://images.unsplash.com/photo-1503376763036-066120622c74?auto=format&fit=crop&w=1600&q=80',
@@ -43,33 +44,46 @@ const heroSlides: HeroSlide[] = [
   }
 ];
 
-// Cubic bezier tuples typed explicitly so framer-motion accepts them
+// Optimized cubic bezier for smooth Awwwards-quality animations
 const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as [number, number, number, number];
 
+// Memoized slide variants with enhanced 3D transforms
 const slideVariants: Variants = {
   enter: (direction: number) => ({
-    x: direction > 0 ? 200 : -200,
+    x: direction > 0 ? 300 : -300,
+    z: -200,
     opacity: 0,
-    scale: 0.92,
-    rotateY: direction > 0 ? 10 : -10
+    scale: 0.85,
+    rotateY: direction > 0 ? 25 : -25,
+    rotateX: direction * 4,
+    rotateZ: direction * 1.5
   }),
   center: {
     x: 0,
+    z: 0,
     opacity: 1,
     scale: 1,
     rotateY: 0,
+    rotateX: 0,
+    rotateZ: 0,
     transition: {
-      duration: 0.9,
-      ease: EASE_OUT_EXPO
+      duration: 1.1,
+      ease: EASE_OUT_EXPO,
+      type: 'spring' as const,
+      stiffness: 80,
+      damping: 25
     }
   },
   exit: (direction: number) => ({
-    x: direction > 0 ? -200 : 200,
+    x: direction > 0 ? -300 : 300,
+    z: -150,
     opacity: 0,
-    scale: 0.92,
-    rotateY: direction > 0 ? -10 : 10,
+    scale: 0.85,
+    rotateY: direction > 0 ? -25 : 25,
+    rotateX: -direction * 4,
+    rotateZ: -direction * 1.5,
     transition: {
-      duration: 0.7,
+      duration: 0.8,
       ease: EASE_OUT_EXPO
     }
   })
@@ -113,31 +127,39 @@ export default function Hero() {
     return () => clearInterval(timer);
   }, [paginate]);
 
-  // Mouse parallax (GSAP)
+  // Mouse parallax with GSAP for ultra-smooth interpolation
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!containerRef.current) return;
     const x = (e.clientX / window.innerWidth - 0.5) * 2;
     const y = (e.clientY / window.innerHeight - 0.5) * 2;
 
+    // Enhanced 3D parallax for image layer
     gsap.to(imageLayerRef.current, {
-      rotateY: x * 4,
-      rotateX: -y * 3,
-      duration: 0.8,
-      ease: 'power2.out'
+      rotateY: x * 6,
+      rotateX: -y * 4,
+      z: Math.abs(x) * 15 + Math.abs(y) * 10,
+      duration: 0.9,
+      ease: 'power3.out',
+      force3D: true
     });
 
+    // Counter-parallax for text layer
     gsap.to(textLayerRef.current, {
-      x: x * -20,
-      y: y * -12,
-      duration: 1,
-      ease: 'power2.out'
+      x: x * -30,
+      y: y * -18,
+      z: 50,
+      duration: 1.1,
+      ease: 'power3.out',
+      force3D: true
     });
 
+    // Subtle CTA parallax
     gsap.to(ctaRef.current, {
-      x: x * -8,
-      y: y * -6,
-      duration: 1.2,
-      ease: 'power2.out'
+      x: x * -12,
+      y: y * -9,
+      duration: 1.3,
+      ease: 'power2.out',
+      force3D: true
     });
   }, []);
 
@@ -146,50 +168,68 @@ export default function Hero() {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [handleMouseMove]);
 
-  // GSAP Master Timeline — scope is the containerRef (correctly typed now)
+  // GSAP Master Timeline with enhanced Awwwards-quality animations
   useGSAP(() => {
     const tl = gsap.timeline({
       defaults: { ease: 'power4.out' },
       onComplete: () => {
-        gsap.to(scrollIndicatorRef.current, { opacity: 1, duration: 1 });
+        gsap.to(scrollIndicatorRef.current, { opacity: 1, duration: 1.2 });
       }
     });
 
-    tl.fromTo('.hero-atmosphere', { opacity: 0 }, { opacity: 1, duration: 2 });
-    tl.fromTo('.hero-eyebrow', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8 }, '-=1.6');
-    tl.fromTo('.hero-word-inner', { y: '110%', opacity: 0, rotateX: 45 }, {
-      y: '0%', opacity: 1, rotateX: 0, duration: 1.4, stagger: 0.06, ease: 'power3.out'
-    }, '-=1.2');
-    tl.fromTo('.hero-subheadline', { opacity: 0, filter: 'blur(12px)', y: 30 }, {
-      opacity: 1, filter: 'blur(0px)', y: 0, duration: 1.2
-    }, '-=0.9');
-    tl.fromTo(imageLayerRef.current, {
-      scale: 0.88, opacity: 0, y: 60, rotateY: 12
-    }, {
-      scale: 1, opacity: 1, y: 0, rotateY: 0, duration: 1.8, ease: 'power3.out'
+    // Atmospheric background reveal
+    tl.fromTo('.hero-atmosphere', { opacity: 0 }, { opacity: 1, duration: 2.5 });
+    
+    // Eyebrow text animation
+    tl.fromTo('.hero-eyebrow', { y: 30, opacity: 0, rotateX: -20 }, { 
+      y: 0, opacity: 1, rotateX: 0, duration: 1, ease: 'back.out(1.7)' 
+    }, '-=2');
+    
+    // Split text headline animation with staggered reveal
+    tl.fromTo('.hero-word-inner', { y: '120%', opacity: 0, rotateX: 60, scale: 0.9 }, {
+      y: '0%', opacity: 1, rotateX: 0, scale: 1, duration: 1.6, stagger: 0.08, ease: 'power3.out'
     }, '-=1.4');
-    tl.fromTo('.hero-cta-btn', { y: 40, opacity: 0 }, {
-      y: 0, opacity: 1, duration: 0.9, stagger: 0.12, ease: 'power3.out'
-    }, '-=1.2');
-    tl.fromTo('.hero-stats-wrapper', { opacity: 0, y: 30 }, {
-      opacity: 1, y: 0, duration: 1
+    
+    // Subheadline with blur reveal effect
+    tl.fromTo('.hero-subheadline', { opacity: 0, filter: 'blur(16px)', y: 40, scale: 0.95 }, {
+      opacity: 1, filter: 'blur(0px)', y: 0, scale: 1, duration: 1.4, ease: 'power3.out'
+    }, '-=1.1');
+    
+    // Image layer dramatic entrance
+    tl.fromTo(imageLayerRef.current, {
+      scale: 0.82, opacity: 0, y: 80, rotateY: 18, z: -100
+    }, {
+      scale: 1, opacity: 1, y: 0, rotateY: 0, z: 0, duration: 2, ease: 'expo.out'
+    }, '-=1.6');
+    
+    // CTA buttons with spring-like entrance
+    tl.fromTo('.hero-cta-btn', { y: 50, opacity: 0, scale: 0.9 }, {
+      y: 0, opacity: 1, scale: 1, duration: 1.1, stagger: 0.14, ease: 'elastic.out(1, 0.5)'
+    }, '-=1.4');
+    
+    // Stats counter animation
+    tl.fromTo('.hero-stats-wrapper', { opacity: 0, y: 40, scale: 0.95 }, {
+      opacity: 1, y: 0, scale: 1, duration: 1.2, ease: 'power3.out'
+    }, '-=0.9');
+    
+    // Carousel dramatic slide-in
+    tl.fromTo('.hero-carousel-wrapper', { opacity: 0, y: 80, rotateX: 10 }, {
+      opacity: 1, y: 0, rotateX: 0, duration: 1.4, ease: 'power3.out'
     }, '-=0.8');
-    tl.fromTo('.hero-carousel-wrapper', { opacity: 0, y: 60 }, {
-      opacity: 1, y: 0, duration: 1.2, ease: 'power3.out'
-    }, '-=0.6');
 
-    // Scroll-driven exit
+    // Scroll-driven parallax exit effects
     gsap.to(textLayerRef.current, {
-      y: -120,
-      scrollTrigger: { trigger: containerRef.current, start: 'top top', end: 'bottom top', scrub: 1.5 }
+      y: -150,
+      z: -50,
+      scrollTrigger: { trigger: containerRef.current, start: 'top top', end: 'bottom top', scrub: 1.8 }
     });
     gsap.to(imageLayerRef.current, {
-      y: 80, scale: 1.08,
-      scrollTrigger: { trigger: containerRef.current, start: 'top top', end: 'bottom top', scrub: 1.5 }
+      y: 100, scale: 1.12, z: -80,
+      scrollTrigger: { trigger: containerRef.current, start: 'top top', end: 'bottom top', scrub: 1.8 }
     });
     gsap.to(containerRef.current, {
-      opacity: 0.3,
-      scrollTrigger: { trigger: containerRef.current, start: '60% top', end: 'bottom top', scrub: 1 }
+      opacity: 0.2,
+      scrollTrigger: { trigger: containerRef.current, start: '60% top', end: 'bottom top', scrub: 1.2 }
     });
   }, { scope: containerRef });
 
@@ -212,15 +252,17 @@ export default function Hero() {
 
       <div className="relative z-10 flex-1 flex flex-col justify-center pt-24 pb-8">
         <div className="container-main w-full">
-          {/* Text Layer */}
+          {/* Text Layer with enhanced 3D perspective */}
           <div
             ref={textLayerRef}
             className="text-center max-w-5xl mx-auto will-change-transform"
-            style={{ transformStyle: 'preserve-3d' }}
+            style={{ transformStyle: 'preserve-3d', perspective: '1200px' }}
           >
             <motion.div
               className="hero-eyebrow text-label text-[var(--amber)] mb-6 md:mb-8 tracking-[0.2em] opacity-0"
-              whileHover={{ letterSpacing: '0.3em', transition: { duration: 0.4 } }}
+              whileHover={{ letterSpacing: '0.35em', transition: { duration: 0.5, ease: 'easeOut' } }}
+              animate={{ textShadow: ['0 0 0px rgba(212,168,83,0)', '0 0 20px rgba(212,168,83,0.4)', '0 0 0px rgba(212,168,83,0)'] }}
+              transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}
             >
               SHK GLOBAL AUCTION
             </motion.div>
@@ -240,38 +282,48 @@ export default function Hero() {
               Bid on exclusivity. Own the extraordinary.
             </p>
 
-            {/* CTAs with Magnetic Effect */}
+            {/* CTAs with Magnetic Effect and enhanced hover states */}
             <div ref={ctaRef} className="flex flex-wrap gap-4 justify-center will-change-transform">
               <MagneticButton
                 as="a"
                 href="/inventory"
                 className="hero-cta-btn group relative inline-flex items-center gap-2 px-8 py-4 bg-[var(--amber)] text-[var(--bg)] font-semibold rounded-sm overflow-hidden opacity-0"
-                strength={0.25}
+                strength={0.3}
               >
                 <span className="relative z-10">Explore Inventory</span>
-                <ChevronRight className="relative z-10 w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-out" />
+                <ChevronRight className="relative z-10 w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
+                <div className="absolute inset-0 bg-gradient-to-r from-white/30 to-transparent translate-y-full group-hover:translate-y-0 transition-transform duration-600 ease-out" />
+                <motion.div
+                  className="absolute inset-0 bg-white/10 opacity-0"
+                  whileHover={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                />
               </MagneticButton>
 
               <MagneticButton
                 as="a"
                 href="/how-it-works"
-                className="hero-cta-btn group inline-flex items-center gap-3 px-8 py-4 border border-[var(--border-strong)] text-[var(--text-primary)] font-semibold rounded-sm hover:border-[var(--amber)] hover:text-[var(--amber)] transition-all duration-300 opacity-0"
-                strength={0.2}
+                className="hero-cta-btn group inline-flex items-center gap-3 px-8 py-4 border border-[var(--border-strong)] text-[var(--text-primary)] font-semibold rounded-sm hover:border-[var(--amber)] hover:text-[var(--amber)] transition-all duration-300 opacity-0 backdrop-blur-sm"
+                strength={0.25}
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-full border border-current">
+                <span className="flex items-center justify-center w-8 h-8 rounded-full border border-current group-hover:scale-110 transition-transform duration-300">
                   <Play className="w-3 h-3 fill-current" />
                 </span>
                 <span>How It Works</span>
+                <motion.div
+                  className="absolute inset-0 border border-[var(--amber)] opacity-0 rounded-sm"
+                  whileHover={{ opacity: 0.3, scale: 1.02 }}
+                  transition={{ duration: 0.4 }}
+                />
               </MagneticButton>
             </div>
           </div>
 
-          {/* Car Image Layer with Framer Motion Slideshow */}
+          {/* Car Image Layer with Framer Motion Slideshow and enhanced 3D */}
           <div
             ref={imageLayerRef}
             className="relative w-full max-w-4xl mx-auto mt-8 md:mt-4 will-change-transform"
-            style={{ transformStyle: 'preserve-3d' }}
+            style={{ transformStyle: 'preserve-3d', perspective: '1200px' }}
           >
             <div className="relative aspect-[16/9] md:aspect-[2.2/1] overflow-visible">
               <AnimatePresence initial={false} custom={slideDirection} mode="popLayout">
@@ -284,45 +336,69 @@ export default function Hero() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="absolute inset-0 w-full h-full object-contain drop-shadow-2xl z-10"
-                  style={{ transformStyle: 'preserve-3d' }}
+                  className="absolute inset-0 w-full h-full object-cover drop-shadow-2xl z-10"
+                  style={{ 
+                    transformStyle: 'preserve-3d',
+                    filter: 'brightness(1.05) contrast(1.02)',
+                    backfaceVisibility: 'hidden'
+                  }}
                 />
               </AnimatePresence>
 
-              {/* Floor reflection */}
-              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-[80%] h-24 bg-gradient-to-t from-[var(--amber)]/15 to-transparent blur-3xl z-0" />
-              <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[60%] h-8 bg-black/40 blur-2xl z-0 rounded-full" />
+              {/* Enhanced floor reflection with gradient layers */}
+              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-[90%] h-32 bg-gradient-to-t from-[var(--amber)]/20 via-[var(--amber)]/8 to-transparent blur-3xl z-0" />
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[70%] h-10 bg-black/50 blur-2xl z-0 rounded-full" />
+              
+              {/* Side glow accents for depth */}
+              <motion.div
+                className="absolute top-1/2 -left-20 w-40 h-40 bg-[var(--amber)]/10 rounded-full blur-3xl"
+                animate={{ 
+                  scale: [1, 1.2, 1],
+                  opacity: [0.3, 0.5, 0.3]
+                }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <motion.div
+                className="absolute top-1/2 -right-20 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl"
+                animate={{ 
+                  scale: [1.2, 1, 1.2],
+                  opacity: [0.5, 0.3, 0.5]
+                }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+              />
             </div>
 
-            {/* Slide Navigation Dots */}
-            <div className="flex items-center justify-center gap-3 mt-6">
+            {/* Slide Navigation Dots with enhanced animation */}
+            <div className="flex items-center justify-center gap-3 mt-8">
               {heroSlides.map((_, i) => (
                 <motion.button
                   key={i}
                   onClick={() => setSlidePage([i, i > slideIndex ? 1 : -1])}
-                  className={`h-1.5 rounded-full transition-colors ${
+                  className={`h-2 rounded-full transition-colors ${
                     i === slideIndex ? 'bg-[var(--amber)]' : 'bg-[var(--border-strong)] hover:bg-[var(--text-secondary)]'
                   }`}
                   animate={{
-                    width: i === slideIndex ? 40 : 10,
-                    opacity: i === slideIndex ? 1 : 0.5
+                    width: i === slideIndex ? 48 : 10,
+                    opacity: i === slideIndex ? 1 : 0.4,
+                    scaleX: i === slideIndex ? 1.1 : 1
                   }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  whileHover={{ scale: 1.3, backgroundColor: 'var(--amber)' }}
+                  whileTap={{ scale: 0.85 }}
                 />
               ))}
             </div>
 
-            {/* Active Slide Label */}
+            {/* Active Slide Label with smooth transitions */}
             <AnimatePresence mode="wait">
               <motion.div
                 key={heroSlides[slideIndex].label}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.4, ease: 'easeOut' }}
-                className="text-center mt-3 text-label text-[var(--text-secondary)] tracking-widest"
+                initial={{ opacity: 0, y: 12, rotateX: -15 }}
+                animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                exit={{ opacity: 0, y: -12, rotateX: 15 }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className="text-center mt-4 text-label text-[var(--text-secondary)] tracking-widest"
+                style={{ transformStyle: 'preserve-3d' }}
               >
                 {heroSlides[slideIndex].label}
               </motion.div>
