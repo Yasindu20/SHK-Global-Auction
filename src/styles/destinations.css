@@ -1,9 +1,9 @@
 /* Destinations Page Custom Styles */
 
-/* Smooth scroll behavior */
-html {
-  scroll-behavior: smooth;
-}
+/* DO NOT set scroll-behavior: smooth here — it overrides index.css's
+   scroll-behavior: auto and creates native smooth scroll that fights Lenis,
+   causing the 2-3 second scroll lag and screen shaking on the home page.
+   Lenis handles all smooth scrolling globally. */
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
@@ -91,20 +91,10 @@ html {
 
 /* Grid background pattern */
 .grid-pattern {
-  background-image: 
+  background-image:
     linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 50px 50px;
-}
-
-/* Noise texture overlay */
-.noise-overlay::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events: none;
-  opacity: 0.4;
 }
 
 /* Smooth image loading */
