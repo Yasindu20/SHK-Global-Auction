@@ -412,18 +412,6 @@ export default function Hero() {
         </div>
         <HeroCarousel />
       </div>
-
-      {/* Scroll Indicator */}
-      <div
-        ref={scrollIndicatorRef}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-3 opacity-0"
-      >
-        <span className="text-label text-[var(--text-secondary)] tracking-widest text-[10px]">SCROLL</span>
-        <div className="relative w-px h-12 bg-[var(--border-subtle)] overflow-hidden">
-          <div className="absolute top-0 left-0 w-full bg-[var(--amber)] animate-scroll-line" />
-        </div>
-      </div>
-
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--bg)] to-transparent z-10 pointer-events-none" />
     </section>
   );
