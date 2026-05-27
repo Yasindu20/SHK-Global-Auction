@@ -43,10 +43,8 @@ const heroSlides: HeroSlide[] = [
   },
 ];
 
-// Simplified ease — expo curves are smoother and cheaper to compute
 const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as [number, number, number, number];
 
-// Lighter slide variants — removed 3D rotateX/rotateY/z (triggers layout compositing)
 const slideVariants: Variants = {
   enter: (direction: number) => ({
     x: direction > 0 ? '100%' : '-100%',
@@ -109,29 +107,31 @@ export default function Hero() {
     return () => clearInterval(timer);
   }, [paginate]);
 
-  // Mouse parallax — throttled with a single RAF callback
+  // Mouse parallax — 2D transforms only (compositor-only, no layout reflow).
+  // Removed rotateX/rotateY because 3D transforms create new compositing layers
+  // and trigger repaints that fight Lenis + ScrollTrigger on every frame.
   const applyParallax = useCallback(() => {
     const { x, y } = mouseDataRef.current;
 
     gsap.to(imageLayerRef.current, {
-      rotateY: x * 4,
-      rotateX: -y * 2.5,
-      duration: 0.9,
+      x: x * 14,
+      y: y * 8,
+      duration: 1.0,
       ease: 'power2.out',
       overwrite: 'auto',
     });
 
     gsap.to(textLayerRef.current, {
-      x: x * -20,
-      y: y * -12,
+      x: x * -18,
+      y: y * -10,
       duration: 1.1,
       ease: 'power2.out',
       overwrite: 'auto',
     });
 
     gsap.to(ctaRef.current, {
-      x: x * -8,
-      y: y * -6,
+      x: x * -7,
+      y: y * -5,
       duration: 1.3,
       ease: 'power2.out',
       overwrite: 'auto',
@@ -140,13 +140,11 @@ export default function Hero() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Store raw data
       mouseDataRef.current = {
         x: (e.clientX / window.innerWidth - 0.5) * 2,
         y: (e.clientY / window.innerHeight - 0.5) * 2,
       };
 
-      // Throttle: only schedule one RAF at a time
       cancelAnimationFrame(mouseRafRef.current);
       mouseRafRef.current = requestAnimationFrame(applyParallax);
     };
@@ -218,26 +216,28 @@ export default function Hero() {
       '-=0.7'
     );
 
-    // Scroll-driven parallax — use `scrub: 1.5` for smoothness
+    // Scroll-driven parallax.
+    // scrub: 0.5 (was 1.5) — lower value means ScrollTrigger catches up faster,
+    // eliminating the 1-2 second lag that compounded with Lenis's own smoothing.
     gsap.to(textLayerRef.current, {
-      y: -120,
+      y: -100,
       scrollTrigger: {
         trigger: containerRef.current,
         start: 'top top',
         end: 'bottom top',
-        scrub: 1.5,
+        scrub: 0.5,
         invalidateOnRefresh: true,
       },
     });
 
     gsap.to(imageLayerRef.current, {
-      y: 80,
-      scale: 1.08,
+      y: 70,
+      scale: 1.06,
       scrollTrigger: {
         trigger: containerRef.current,
         start: 'top top',
         end: 'bottom top',
-        scrub: 1.5,
+        scrub: 0.5,
         invalidateOnRefresh: true,
       },
     });
@@ -248,7 +248,7 @@ export default function Hero() {
         trigger: containerRef.current,
         start: '60% top',
         end: 'bottom top',
-        scrub: 1,
+        scrub: 0.5,
         invalidateOnRefresh: true,
       },
     });
@@ -258,7 +258,6 @@ export default function Hero() {
     <section
       ref={containerRef}
       className="relative min-h-[100dvh] overflow-hidden flex flex-col"
-      style={{ perspective: '1000px' }}
     >
       <HeroBackground />
 
@@ -275,11 +274,12 @@ export default function Hero() {
 
       <div className="relative z-10 flex-1 flex flex-col justify-center pt-24 pb-8">
         <div className="container-main w-full">
-          {/* Text Layer */}
+          {/* Text Layer — will-change: transform allows browser to promote to
+              its own compositor layer; omit transformStyle preserve-3d since
+              we no longer use 3D rotations here */}
           <div
             ref={textLayerRef}
             className="text-center max-w-5xl mx-auto will-change-transform"
-            style={{ transformStyle: 'preserve-3d' }}
           >
             <motion.div
               className="hero-eyebrow text-label text-[var(--amber)] mb-6 md:mb-8 tracking-[0.2em] opacity-0"
@@ -340,7 +340,6 @@ export default function Hero() {
           <div
             ref={imageLayerRef}
             className="relative w-full max-w-4xl mx-auto mt-8 md:mt-4 will-change-transform"
-            style={{ transformStyle: 'preserve-3d' }}
           >
             <div className="relative aspect-[16/9] md:aspect-[2.2/1] overflow-hidden rounded-sm">
               <AnimatePresence initial={false} custom={slideDirection} mode="popLayout">
@@ -354,13 +353,11 @@ export default function Hero() {
                   animate="center"
                   exit="exit"
                   className="absolute inset-0 w-full h-full object-cover"
-                  // Lazy load all except first slide
                   loading={slideIndex === 0 ? 'eager' : 'lazy'}
                   decoding="async"
                 />
               </AnimatePresence>
 
-              {/* Subtle floor reflection */}
               <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[85%] h-28 bg-gradient-to-t from-[var(--amber)]/15 via-[var(--amber)]/6 to-transparent blur-3xl pointer-events-none" />
               <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[65%] h-8 bg-black/40 blur-2xl rounded-full pointer-events-none" />
             </div>
