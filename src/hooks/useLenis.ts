@@ -19,28 +19,33 @@ export function useLenis() {
       duration: 1.1,
       easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
-      // Disable touch smoothing — native momentum on mobile is faster
       syncTouch: false,
       touchMultiplier: 1,
     });
 
     lenisInstance = lenis;
 
-    // CRITICAL FIX: Drive Lenis via GSAP's ticker instead of its own RAF loop.
-    // This prevents the two loop conflict that causes scroll jank and page-stuck.
-    gsap.ticker.add((time) => {
+    // THE FIX: store the ticker function in a variable so we can remove the
+    // exact same reference later. The original code passed a new arrow
+    // function to gsap.ticker.remove(), which is a different object in
+    // memory — so the original callback was never removed, and each page
+    // mount stacked another ticker on top of the last one.
+    const tickerFn = (time: number) => {
       lenis.raf(time * 1000);
-    });
+    };
 
-    // GSAP ticker lag smoothing — prevents dropped frames on heavy paint
+    gsap.ticker.add(tickerFn);
+
+    // Prevents GSAP from skipping frames after a tab loses focus and
+    // regains it, which would cause a jarring scroll jump.
     gsap.ticker.lagSmoothing(0);
 
-    // Sync ScrollTrigger positions with every Lenis scroll tick
+    // Keep ScrollTrigger in sync with every Lenis scroll tick
     lenis.on('scroll', ScrollTrigger.update);
 
     return () => {
-      // Remove the specific ticker callback
-      gsap.ticker.remove((time) => lenis.raf(time * 1000));
+      // Remove the exact same function reference — now it actually works
+      gsap.ticker.remove(tickerFn);
       lenis.off('scroll', ScrollTrigger.update);
       lenis.destroy();
       lenisInstance = null;
