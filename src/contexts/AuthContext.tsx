@@ -40,6 +40,7 @@ interface AuthContextType extends AdminAuthState, CustomerAuthState {
   userLogout: () => Promise<void>;
   refreshAdminToken: () => Promise<boolean>;
   getAdminAuthHeader: () => Record<string, string>;
+  getUserAuthHeader: () => Record<string, string>;
 }
 
 interface RegisterData {
@@ -298,6 +299,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return adminToken ? { Authorization: `Bearer ${adminToken}` } : {};
   };
 
+  const getUserAuthHeader = (): Record<string, string> => {
+    return userToken ? { Authorization: `Bearer ${userToken}` } : {};
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -316,6 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userLogout,
         refreshAdminToken,
         getAdminAuthHeader,
+        getUserAuthHeader,
       }}
     >
       {children}
@@ -337,6 +343,6 @@ export const useAdminAuth = () => {
 };
 
 export const useCustomerAuth = () => {
-  const { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout } = useAuth();
-  return { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout };
+  const { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout, getUserAuthHeader } = useAuth();
+  return { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout, getUserAuthHeader };
 };

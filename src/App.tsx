@@ -6,7 +6,7 @@ import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import Home from './pages/Home';
 import Inventory from './pages/Inventory';
 import VehicleDetail from './pages/VehicleDetail';
-import Dashboard from './pages/Dashboard';
+import CustomerProfile from './pages/CustomerProfile';
 import Destinations from './pages/Destinations';
 import HowItWorks from './pages/HowItWorks';
 import CustomerAuth from './pages/CustomerAuth';
@@ -42,7 +42,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/vehicle/:id" element={<VehicleDetail />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={<CustomerProfile />} />
         <Route path="/destinations" element={<Destinations />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
 

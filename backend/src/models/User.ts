@@ -11,6 +11,7 @@ export interface IUser extends Document {
   country?: string;
   refreshToken?: string;
   isActive: boolean;
+  savedVehicles: mongoose.Schema.Types.ObjectId[];
   createdAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
@@ -63,6 +64,9 @@ const UserSchema: Schema = new Schema(
       type: Boolean,
       default: true,
     },
+    savedVehicles: [
+      { type: Schema.Types.ObjectId, ref: 'Listing' }
+    ],
   },
   { timestamps: true }
 );
