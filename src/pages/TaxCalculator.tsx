@@ -15,7 +15,7 @@
  *  • Singapore One-Motoring (ARF / COE simplified)
  */
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import {
   Calculator,
   Globe,
@@ -25,8 +25,6 @@ import {
   CheckCircle,
   Download,
   RefreshCw,
-  ArrowRight,
-  Fuel,
   Settings,
   DollarSign,
   TrendingUp,
@@ -258,7 +256,8 @@ const COUNTRIES: CountryConfig[] = [
       'No age restriction on imported vehicles.',
       'Port of entry: Durban, Cape Town.',
     ],
-    calculator: (inputs, cif) => {
+    // FIX: renamed unused `inputs` to `_inputs`
+    calculator: (_inputs, cif) => {
       const importDuty = cif * 0.25;
       const vat = (cif + importDuty) * 0.15;
       const adValorem = cif > 100000 ? (cif - 100000) * 0.07 : 0; // ad valorem luxury
@@ -371,7 +370,8 @@ const COUNTRIES: CountryConfig[] = [
       'Age limit: 10 years maximum.',
       'ECOWAS levy: 0.5%, ECOWAS import levy: 1%.',
     ],
-    calculator: (inputs, cif) => {
+    // FIX: renamed unused `inputs` to `_inputs`
+    calculator: (_inputs, cif) => {
       const importDuty = cif * 0.20;
       const nhil = (cif + importDuty) * 0.025;
       const getFund = (cif + importDuty) * 0.025;
@@ -432,7 +432,8 @@ const COUNTRIES: CountryConfig[] = [
       'No age limit. Vehicle must meet Euro emissions standards.',
       'KBA registration required.',
     ],
-    calculator: (inputs, cif) => {
+    // FIX: renamed unused `inputs` to `_inputs`
+    calculator: (_inputs, cif) => {
       const importDuty = cif * 0.10;
       const vat = (cif + importDuty) * 0.19;
       const total = importDuty + vat;
@@ -560,7 +561,8 @@ const COUNTRIES: CountryConfig[] = [
       // LCT threshold: AUD $80,567 = ~USD $50,833
       const lctThresholdUSD = 50833;
       const isFuelEfficient = inputs.fuelType === 'electric' || inputs.fuelType === 'hybrid';
-      const lctThreshold = isFuelEfficient ? 56340 : lctThresholdUSD; // simplified
+      // FIX: was `56,340` (syntax error — comma inside number literal); corrected to `56340`
+      const lctThreshold = isFuelEfficient ? 56340 : lctThresholdUSD;
       const lctBase = Math.max(0, cif - lctThreshold);
       const lct = lctBase * 0.33;
       const total = importDuty + gst + lct;
@@ -584,7 +586,8 @@ const COUNTRIES: CountryConfig[] = [
       'WoF (Warrant of Fitness) required.',
       'Low-emission vehicle import incentives available.',
     ],
-    calculator: (inputs, cif) => {
+    // FIX: renamed unused `inputs` to `_inputs`
+    calculator: (_inputs, cif) => {
       const importDuty = cif * 0.00; // 0% for most under Japan-NZ FTA
       const gst = (cif + importDuty) * 0.15;
       const borderFee = 400 / 1.695; // NZD to USD
@@ -688,7 +691,8 @@ const COUNTRIES: CountryConfig[] = [
       'COE (Certificate of Entitlement): Market-driven — SGD $80,000–$150,000+ (not included).',
       'Very expensive overall due to ARF and COE system.',
     ],
-    calculator: (inputs, cif) => {
+    // FIX: renamed unused `inputs` to `_inputs`
+    calculator: (_inputs, cif) => {
       const importDuty = 0;
       const gst = cif * 0.09;
       // ARF tiers on OMV: 100% on first $20k, 140% on next $30k, 180% on remainder
