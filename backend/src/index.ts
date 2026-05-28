@@ -15,9 +15,13 @@ import path from 'path';
 import fs from 'fs';
 
 import Listing from './models/Listing';
+import Order from './models/Order';
+import Message from './models/Message';
 import { STCJapanParser } from './crawler/STCJapanParser';
-import { requireAdmin } from './middleware/auth';
+import { requireAdmin, requireUser } from './middleware/auth';
 import authRouter from './routes/auth';
+import customerRouter from './routes/customer';
+import adminCustomerRouter from './routes/admin-customer';
 
 dotenv.config();
 
@@ -215,6 +219,12 @@ app.get('/health', (_req, res) => {
 
 // ─── Auth routes ──────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
+
+// ─── Customer profile routes ──────────────────────────────────────────────────
+app.use('/api/user', customerRouter);
+
+// ─── Admin customer management routes ──────────────────────────────────────────
+app.use('/api/admin', adminCustomerRouter);
 
 // ─── Public listing endpoints ─────────────────────────────────────────────────
 app.get('/api/listings', async (_req, res) => {

@@ -40,6 +40,7 @@ interface AuthContextType extends AdminAuthState, CustomerAuthState {
   userLogout: () => Promise<void>;
   refreshAdminToken: () => Promise<boolean>;
   getAdminAuthHeader: () => Record<string, string>;
+  getUserAuthHeader: () => Record<string, string>;
 }
 
 interface RegisterData {
@@ -65,35 +66,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CustomerUser | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
 
+  // Keep a ref so callbacks always see the latest token without stale closures
+  const adminTokenRef = useRef<string | null>(null);
+  const userTokenRef = useRef<string | null>(null);
+
   // Refresh timer refs
   const adminRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep refs in sync with state
+  useEffect(() => { adminTokenRef.current = adminToken; }, [adminToken]);
+  useEffect(() => { userTokenRef.current = userToken; }, [userToken]);
 
   // ── Admin token refresh ──────────────────────────────────────────────────────
   const refreshAdminToken = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch(`${API}/api/auth/admin/refresh`, {
         method: 'POST',
-        credentials: 'include', // sends HttpOnly cookie automatically
+        credentials: 'include',
       });
 
       if (!res.ok) {
         setAdminToken(null);
         setAdmin(null);
+        adminTokenRef.current = null;
         return false;
       }
 
       const data = await res.json();
-      setAdminToken(data.accessToken);
+      const token: string = data.accessToken;
+      setAdminToken(token);
+      adminTokenRef.current = token;
 
-      // Schedule next refresh 1 minute before expiry (access token = 15min)
+      // Fetch admin profile with the freshly received token (no stale closure)
+      try {
+        const profileRes = await fetch(`${API}/api/auth/admin/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          setAdmin(profileData);
+        }
+      } catch {
+        // Profile fetch failing doesn't invalidate the token
+      }
+
       scheduleAdminRefresh(14 * 60 * 1000);
       return true;
     } catch {
       setAdminToken(null);
       setAdmin(null);
+      adminTokenRef.current = null;
       return false;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scheduleAdminRefresh = (delayMs: number) => {
@@ -114,20 +140,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) {
         setUserToken(null);
         setUser(null);
+        userTokenRef.current = null;
         return false;
       }
 
       const data = await res.json();
-      setUserToken(data.accessToken);
+      const token: string = data.accessToken;
+      setUserToken(token);
+      userTokenRef.current = token;
 
-      // Schedule next refresh 5 minutes before expiry (user token = 30min)
       scheduleUserRefresh(25 * 60 * 1000);
       return true;
     } catch {
       setUserToken(null);
       setUser(null);
+      userTokenRef.current = null;
       return false;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scheduleUserRefresh = (delayMs: number) => {
@@ -141,20 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAdmin = async () => {
       setIsAdminLoading(true);
-      const ok = await refreshAdminToken();
-      if (ok) {
-        // Fetch admin profile
-        try {
-          const res = await fetch(`${API}/api/auth/admin/me`, {
-            headers: { Authorization: `Bearer ${adminToken}` },
-          });
-          // Note: token may not be in state yet — use the flag
-          if (res.ok) {
-            const data = await res.json();
-            setAdmin(data);
-          }
-        } catch (_) {}
-      }
+      await refreshAdminToken(); // profile fetch is now inside refreshAdminToken
       setIsAdminLoading(false);
     };
 
@@ -171,21 +188,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (adminRefreshTimer.current) clearTimeout(adminRefreshTimer.current);
       if (userRefreshTimer.current) clearTimeout(userRefreshTimer.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Fetch admin profile once token is set
-  useEffect(() => {
-    if (!adminToken || admin) return;
-
-    fetch(`${API}/api/auth/admin/me`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setAdmin(data);
-      })
-      .catch(() => {});
-  }, [adminToken]);
 
   // ── Auth actions ──────────────────────────────────────────────────────────────
 
@@ -194,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch(`${API}/api/auth/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // to receive HttpOnly cookie
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
@@ -208,7 +212,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
-      setAdminToken(data.accessToken);
+      const token: string = data.accessToken;
+      setAdminToken(token);
+      adminTokenRef.current = token;
       setAdmin(data.admin);
       scheduleAdminRefresh(14 * 60 * 1000);
       return { success: true };
@@ -221,15 +227,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (adminRefreshTimer.current) clearTimeout(adminRefreshTimer.current);
 
     try {
+      const token = adminTokenRef.current;
       await fetch(`${API}/api/auth/admin/logout`, {
         method: 'POST',
-        headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
 
     setAdminToken(null);
     setAdmin(null);
+    adminTokenRef.current = null;
   };
 
   const userLogin = async (email: string, password: string) => {
@@ -247,7 +257,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error || 'Login failed' };
       }
 
-      setUserToken(data.accessToken);
+      const token: string = data.accessToken;
+      setUserToken(token);
+      userTokenRef.current = token;
       setUser(data.user);
       scheduleUserRefresh(25 * 60 * 1000);
       return { success: true };
@@ -271,7 +283,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error || 'Registration failed' };
       }
 
-      setUserToken(data.accessToken);
+      const token: string = data.accessToken;
+      setUserToken(token);
+      userTokenRef.current = token;
       setUser(data.user);
       scheduleUserRefresh(25 * 60 * 1000);
       return { success: true };
@@ -288,14 +302,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         credentials: 'include',
       });
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
 
     setUserToken(null);
     setUser(null);
+    userTokenRef.current = null;
   };
 
+  // Always read from ref so callers get the latest token synchronously
   const getAdminAuthHeader = (): Record<string, string> => {
-    return adminToken ? { Authorization: `Bearer ${adminToken}` } : {};
+    const token = adminTokenRef.current;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const getUserAuthHeader = (): Record<string, string> => {
+    const token = userTokenRef.current;
+    return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
   return (
@@ -316,6 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userLogout,
         refreshAdminToken,
         getAdminAuthHeader,
+        getUserAuthHeader,
       }}
     >
       {children}
@@ -337,6 +362,6 @@ export const useAdminAuth = () => {
 };
 
 export const useCustomerAuth = () => {
-  const { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout } = useAuth();
-  return { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout };
+  const { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout, getUserAuthHeader } = useAuth();
+  return { user, userToken, isUserAuthenticated, isUserLoading, userLogin, userRegister, userLogout, getUserAuthHeader };
 };
