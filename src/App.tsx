@@ -16,6 +16,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminReview from './pages/AdminReview';
 import AdminAddVehicle from './pages/AdminAddVehicle';
 import AdminCrawlMonitor from './pages/AdminCrawlMonitor';
+import TaxCalculator from './pages/TaxCalculator';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -27,8 +28,8 @@ function ScrollToTop() {
 
 function ConditionalNavbar() {
   const { pathname } = useLocation();
-  // Hide navbar on admin pages and auth pages
-  if (pathname.startsWith('/admin') || pathname === '/auth') return null;
+  // Hide navbar on admin pages, auth pages, and tax calculator (has its own navbar)
+  if (pathname.startsWith('/admin') || pathname === '/auth' || pathname === '/tax-calculator') return null;
   return <Navbar />;
 }
 
@@ -46,6 +47,9 @@ export default function App() {
         <Route path="/destinations" element={<Destinations />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
 
+        {/* ── Tax Calculator ─────────────────────────────────────────── */}
+        <Route path="/tax-calculator" element={<TaxCalculator />} />
+
         {/* ── Customer auth ──────────────────────────────────────────── */}
         <Route path="/auth" element={<CustomerAuth />} />
 
@@ -53,11 +57,6 @@ export default function App() {
         <Route path="/admin/login" element={<AdminLogin />} />
 
         {/* ── Protected admin routes ─────────────────────────────────── */}
-        {/*
-          All /admin/* routes are wrapped in ProtectedAdminRoute.
-          If no valid admin JWT, the user is redirected to /admin/login.
-          The admin panel URL is not linked anywhere in the public UI.
-        */}
         <Route element={<ProtectedAdminRoute />}>
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />

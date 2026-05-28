@@ -1,24 +1,25 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, Globe, User, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, X, Globe, User, LogOut, ChevronDown, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useCustomerAuth } from '../contexts/AuthContext';
 
 const NAV_LINKS = [
-  { label: 'Home', href: '/' },
-  { label: 'Inventory', href: '/inventory' },
-  { label: 'Destinations', href: '/destinations' },
-  { label: 'How It Works', href: '/how-it-works' },
-  { label: 'Dashboard', href: '/dashboard' },
+  { label: 'Home',           href: '/' },
+  { label: 'Inventory',      href: '/inventory' },
+  { label: 'Destinations',   href: '/destinations' },
+  { label: 'How It Works',   href: '/how-it-works' },
+  { label: 'Tax Calculator', href: '/tax-calculator', highlight: true },
+  { label: 'Dashboard',      href: '/dashboard' },
 ];
 
 export default function Navbar() {
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [isScrolled, setIsScrolled]       = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [userMenuOpen, setUserMenuOpen]   = useState(false);
+  const location  = useLocation();
+  const navigate  = useNavigate();
   const { user, isUserAuthenticated, userLogout } = useCustomerAuth();
 
   useEffect(() => {
@@ -56,7 +57,8 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 md:h-20">
-          {/* Logo */}
+
+          {/* ── Logo ─────────────────────────────────────────────────────── */}
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Globe className="w-5 h-5 text-white" />
@@ -66,20 +68,36 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* Desktop Navigation */}
+          {/* ── Desktop Navigation ────────────────────────────────────────── */}
           <div className="hidden md:flex items-center gap-1">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 to={link.href}
                 className={cn(
-                  'relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300',
+                  'relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300 flex items-center gap-1.5',
                   location.pathname === link.href
                     ? 'text-white bg-white/10'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 )}
               >
+                {link.highlight && (
+                  <Calculator
+                    size={12}
+                    className={cn(
+                      location.pathname === link.href
+                        ? 'text-amber-400'
+                        : 'text-amber-500/70'
+                    )}
+                  />
+                )}
                 {link.label}
+                {link.highlight && location.pathname !== link.href && (
+                  <span
+                    className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 animate-pulse"
+                    style={{ fontSize: '8px' }}
+                  />
+                )}
                 {location.pathname === link.href && (
                   <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-400" />
                 )}
@@ -87,7 +105,7 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* Desktop CTA */}
+          {/* ── Desktop CTA ───────────────────────────────────────────────── */}
           <div className="hidden md:flex items-center gap-3">
             {isUserAuthenticated && user ? (
               /* Authenticated user menu */
@@ -160,7 +178,7 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Mobile menu button */}
+          {/* ── Mobile menu button ────────────────────────────────────────── */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
@@ -170,7 +188,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
+      {/* ── Mobile menu ──────────────────────────────────────────────────── */}
       <div
         className={cn(
           'md:hidden absolute top-full left-0 right-0 bg-black/95 backdrop-blur-xl border-b border-white/5 transition-all duration-300 overflow-hidden',
@@ -183,13 +201,22 @@ export default function Navbar() {
               key={link.href}
               to={link.href}
               className={cn(
-                'block px-4 py-3 rounded-lg text-sm font-medium transition-colors',
+                'flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-colors',
                 location.pathname === link.href
                   ? 'text-white bg-white/10'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
               )}
             >
+              {link.highlight && <Calculator size={14} className="text-amber-500" />}
               {link.label}
+              {link.highlight && (
+                <span
+                  className="ml-auto px-2 py-0.5 rounded-full text-xs font-bold"
+                  style={{ background: 'rgba(212,168,83,0.15)', color: '#D4A853' }}
+                >
+                  NEW
+                </span>
+              )}
             </Link>
           ))}
 
