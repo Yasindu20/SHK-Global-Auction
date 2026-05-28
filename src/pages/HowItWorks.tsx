@@ -47,7 +47,6 @@ function AmbientNetwork() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     mount.appendChild(renderer.domElement);
 
-    // Particle positions & velocities
     const COUNT = 70;
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(COUNT * 3);
@@ -258,7 +257,7 @@ const faqs = [
   },
 ];
 
-// ─── Awwwards-Quality Trust Indicators Section ───────────────────────────────
+// ─── Particle Burst ───────────────────────────────────────────────────────────
 
 function ParticleBurst({ active, x, y, color }: { active: boolean; x: number; y: number; color: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -379,11 +378,14 @@ function TrustCard({ item, index, inView }: { item: (typeof trustIndicators)[0];
       transformPerspective: 1000,
     });
 
-    gsap.to(card.querySelector('.card-glow') as HTMLElement, {
-      x: x - rect.width / 2,
-      y: y - rect.height / 2,
-      duration: 0.3, ease: 'power2.out',
-    });
+    const glowEl = card.querySelector('.card-glow') as HTMLElement | null;
+    if (glowEl) {
+      gsap.to(glowEl, {
+        x: x - rect.width / 2,
+        y: y - rect.height / 2,
+        duration: 0.3, ease: 'power2.out',
+      });
+    }
   }, []);
 
   const handleMouseLeave = useCallback(() => {
@@ -404,10 +406,12 @@ function TrustCard({ item, index, inView }: { item: (typeof trustIndicators)[0];
     setHovered(true);
     setTimeout(() => setBurstPos(p => ({ ...p, active: false })), 100);
 
-    gsap.fromTo(iconRef.current,
-      { scale: 0.8, rotation: -10 },
-      { scale: 1.1, rotation: 0, duration: 0.5, ease: 'back.out(2)' }
-    );
+    if (iconRef.current) {
+      gsap.fromTo(iconRef.current,
+        { scale: 0.8, rotation: -10 },
+        { scale: 1.1, rotation: 0, duration: 0.5, ease: 'back.out(2)' }
+      );
+    }
   }, []);
 
   const Icon = item.icon;
@@ -545,7 +549,7 @@ function InfiniteMarquee({ items, direction = 'left', speed = 30 }: { items: str
   useEffect(() => {
     const marquee = marqueeRef.current;
     if (!marquee) return;
-    const content = marquee.querySelector('.marquee-content') as HTMLElement;
+    const content = marquee.querySelector('.marquee-content') as HTMLElement | null;
     if (!content) return;
     const width = content.scrollWidth / 2;
     const duration = width / speed;
@@ -580,6 +584,8 @@ function InfiniteMarquee({ items, direction = 'left', speed = 30 }: { items: str
   );
 }
 
+// ─── Trust Indicators Section ─────────────────────────────────────────────────
+
 function TrustIndicatorsSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const cardsContainerRef = useRef<HTMLDivElement>(null);
@@ -599,34 +605,40 @@ function TrustIndicatorsSection() {
     if (!section || !cardsContainer || !header) return;
 
     const ctx = gsap.context(() => {
-      gsap.fromTo(header.children,
-        { opacity: 0, y: 40 },
-        {
-          opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.1,
-          scrollTrigger: { trigger: header, start: 'top 85%', once: true },
-        }
-      );
+      // FIX: convert HTMLCollection → Array and guard length > 0
+      const headerChildren = Array.from(header.children) as HTMLElement[];
+      if (headerChildren.length > 0) {
+        gsap.fromTo(headerChildren,
+          { opacity: 0, y: 40 },
+          {
+            opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', stagger: 0.1,
+            scrollTrigger: { trigger: header, start: 'top 85%', once: true },
+          }
+        );
+      }
 
-      const cards = cardsContainer.querySelectorAll('.trust-card');
-      gsap.fromTo(cards,
-        { opacity: 0, y: 80, rotateX: 20, rotateY: (i) => (i % 2 === 0 ? -10 : 10), scale: 0.9 },
-        {
-          opacity: 1, y: 0, rotateX: 0, rotateY: 0, scale: 1,
-          duration: 0.9, ease: 'power3.out', stagger: 0.12,
-          transformPerspective: 1200,
-          scrollTrigger: {
-            trigger: cardsContainer, start: 'top 80%', once: true,
-            onEnter: () => setInView(true),
-          },
-        }
-      );
+      const cards = Array.from(cardsContainer.querySelectorAll('.trust-card')) as HTMLElement[];
+      if (cards.length > 0) {
+        gsap.fromTo(cards,
+          { opacity: 0, y: 80, rotateX: 20, rotateY: (i) => (i % 2 === 0 ? -10 : 10), scale: 0.9 },
+          {
+            opacity: 1, y: 0, rotateX: 0, rotateY: 0, scale: 1,
+            duration: 0.9, ease: 'power3.out', stagger: 0.12,
+            transformPerspective: 1200,
+            scrollTrigger: {
+              trigger: cardsContainer, start: 'top 80%', once: true,
+              onEnter: () => setInView(true),
+            },
+          }
+        );
 
-      cards.forEach((card, i) => {
-        gsap.to(card, {
-          y: '+=8', duration: 2 + i * 0.3,
-          ease: 'sine.inOut', repeat: -1, yoyo: true, delay: i * 0.2,
+        cards.forEach((card, i) => {
+          gsap.to(card, {
+            y: '+=8', duration: 2 + i * 0.3,
+            ease: 'sine.inOut', repeat: -1, yoyo: true, delay: i * 0.2,
+          });
         });
-      });
+      }
     }, section);
 
     return () => ctx.revert();
@@ -741,7 +753,7 @@ function TrustIndicatorsSection() {
   );
 }
 
-// ─── Awwwards-Quality Process Steps Section ───────────────────────────────────
+// ─── Process Steps Section ────────────────────────────────────────────────────
 
 function ProcessStepsSection() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -768,12 +780,15 @@ function ProcessStepsSection() {
     const track = trackRef.current;
     if (!section || !track) return;
 
+    // FIX: filter out nulls and ensure arrays are non-empty before animating
     const cards = cardsRef.current.filter(Boolean) as HTMLDivElement[];
     const bgNumbers = bgNumbersRef.current.filter(Boolean) as HTMLDivElement[];
     const dots = stepDotsRef.current.filter(Boolean) as HTMLDivElement[];
     const paths = connectorPathsRef.current.filter(Boolean) as SVGPathElement[];
     const progressFill = progressFillRef.current;
     const counterCurrent = counterCurrentRef.current;
+
+    if (cards.length === 0) return;
 
     const getScrollAmount = () => {
       const trackWidth = track.scrollWidth;
@@ -832,23 +847,12 @@ function ProcessStepsSection() {
     });
 
     cards.forEach((card, i) => {
-      const bgNum = bgNumbers[i];
-
+      // Card entrance
       gsap.fromTo(
         card,
+        { rotateY: 25, rotateX: 5, z: -150, opacity: 0, x: 100 },
         {
-          rotateY: 25,
-          rotateX: 5,
-          z: -150,
-          opacity: 0,
-          x: 100,
-        },
-        {
-          rotateY: 0,
-          rotateX: 0,
-          z: 0,
-          opacity: 1,
-          x: 0,
+          rotateY: 0, rotateX: 0, z: 0, opacity: 1, x: 0,
           ease: 'power3.out',
           scrollTrigger: {
             trigger: card,
@@ -860,14 +864,14 @@ function ProcessStepsSection() {
         }
       );
 
+      // FIX: guard bgNumbers[i] before animating
+      const bgNum = bgNumbers[i];
       if (bgNum) {
         gsap.fromTo(
           bgNum,
           { scale: 0.6, opacity: 0 },
           {
-            scale: 1,
-            opacity: 0.04,
-            ease: 'none',
+            scale: 1, opacity: 0.04, ease: 'none',
             scrollTrigger: {
               trigger: card,
               containerAnimation: scrollTl,
@@ -879,35 +883,35 @@ function ProcessStepsSection() {
         );
       }
 
-      const details = card.querySelectorAll('.step-detail-item');
-      gsap.fromTo(
-        details,
-        { opacity: 0, x: 20 },
-        {
-          opacity: 1,
-          x: 0,
-          stagger: 0.08,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: card,
-            containerAnimation: scrollTl,
-            start: 'left 60%',
-            end: 'left 30%',
-            scrub: 1,
-          },
-        }
-      );
+      // FIX: convert NodeList → Array and guard length > 0 before animating
+      const detailsNodeList = card.querySelectorAll('.step-detail-item');
+      const details = Array.from(detailsNodeList) as HTMLElement[];
+      if (details.length > 0) {
+        gsap.fromTo(
+          details,
+          { opacity: 0, x: 20 },
+          {
+            opacity: 1, x: 0, stagger: 0.08, ease: 'power2.out',
+            scrollTrigger: {
+              trigger: card,
+              containerAnimation: scrollTl,
+              start: 'left 60%',
+              end: 'left 30%',
+              scrub: 1,
+            },
+          }
+        );
+      }
     });
 
+    // Connector path animations
     paths.forEach((path, i) => {
+      // Guard: make sure the corresponding card exists
+      if (!cards[i]) return;
       const length = path.getTotalLength();
-      gsap.set(path, {
-        strokeDasharray: length,
-        strokeDashoffset: length,
-      });
+      gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
       gsap.to(path, {
-        strokeDashoffset: 0,
-        ease: 'none',
+        strokeDashoffset: 0, ease: 'none',
         scrollTrigger: {
           trigger: cards[i],
           containerAnimation: scrollTl,
@@ -918,9 +922,7 @@ function ProcessStepsSection() {
       });
     });
 
-    const onResize = () => {
-      ScrollTrigger.refresh();
-    };
+    const onResize = () => ScrollTrigger.refresh();
     window.addEventListener('resize', onResize);
 
     return () => {
@@ -933,6 +935,7 @@ function ProcessStepsSection() {
     };
   }, [isMobile]);
 
+  // Mobile card entrance animations
   useEffect(() => {
     if (!isMobile) return;
     const cards = cardsRef.current.filter(Boolean) as HTMLDivElement[];
@@ -942,16 +945,9 @@ function ProcessStepsSection() {
         card,
         { opacity: 0, y: 60, rotateX: 15, transformPerspective: 1000 },
         {
-          opacity: 1,
-          y: 0,
-          rotateX: 0,
-          duration: 0.8,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: card,
-            start: 'top 85%',
-            once: true,
-          },
+          opacity: 1, y: 0, rotateX: 0,
+          duration: 0.8, ease: 'power3.out',
+          scrollTrigger: { trigger: card, start: 'top 85%', once: true },
           delay: i * 0.1,
         }
       );
@@ -971,11 +967,8 @@ function ProcessStepsSection() {
     const rotateY = ((x - centerX) / centerX) * 8;
 
     gsap.to(card, {
-      rotateX,
-      rotateY,
-      scale: 1.02,
-      duration: 0.4,
-      ease: 'power2.out',
+      rotateX, rotateY, scale: 1.02,
+      duration: 0.4, ease: 'power2.out',
       transformPerspective: 1200,
     });
   }, [isMobile]);
@@ -985,11 +978,8 @@ function ProcessStepsSection() {
     const card = cardsRef.current[index];
     if (!card) return;
     gsap.to(card, {
-      rotateX: 0,
-      rotateY: 0,
-      scale: 1,
-      duration: 0.6,
-      ease: 'elastic.out(1, 0.5)',
+      rotateX: 0, rotateY: 0, scale: 1,
+      duration: 0.6, ease: 'elastic.out(1, 0.5)',
     });
   }, [isMobile]);
 
@@ -1040,6 +1030,7 @@ function ProcessStepsSection() {
         </p>
       </div>
 
+      {/* Desktop horizontal scroll track */}
       <div
         ref={trackRef}
         className="hidden lg:flex items-center"
@@ -1071,14 +1062,9 @@ function ProcessStepsSection() {
                   ref={(el) => { bgNumbersRef.current[index] = el; }}
                   className="absolute select-none pointer-events-none"
                   style={{
-                    top: '-2rem',
-                    right: '-1rem',
-                    fontSize: '12rem',
-                    fontWeight: 900,
-                    lineHeight: 1,
-                    color: 'var(--amber)',
-                    opacity: 0,
-                    zIndex: 0,
+                    top: '-2rem', right: '-1rem',
+                    fontSize: '12rem', fontWeight: 900, lineHeight: 1,
+                    color: 'var(--amber)', opacity: 0, zIndex: 0,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                   }}
                 >
@@ -1101,10 +1087,8 @@ function ProcessStepsSection() {
                   <div
                     className="absolute rounded-full pointer-events-none"
                     style={{
-                      top: '2rem',
-                      left: '2rem',
-                      width: '3rem',
-                      height: '3rem',
+                      top: '2rem', left: '2rem',
+                      width: '3rem', height: '3rem',
                       background: 'radial-gradient(circle, rgba(212,168,83,0.15) 0%, transparent 70%)',
                       filter: 'blur(20px)',
                     }}
@@ -1117,10 +1101,7 @@ function ProcessStepsSection() {
                       border: '1px solid rgba(212,168,83,0.2)',
                     }}
                   >
-                    <span
-                      className="text-xs font-bold"
-                      style={{ color: 'var(--amber)', fontFamily: 'monospace' }}
-                    >
+                    <span className="text-xs font-bold" style={{ color: 'var(--amber)', fontFamily: 'monospace' }}>
                       STEP {step.id}
                     </span>
                   </div>
@@ -1137,19 +1118,12 @@ function ProcessStepsSection() {
 
                   <h3
                     className="font-semibold mb-3"
-                    style={{
-                      color: 'var(--text-primary)',
-                      fontSize: '1.35rem',
-                      letterSpacing: '-0.01em',
-                    }}
+                    style={{ color: 'var(--text-primary)', fontSize: '1.35rem', letterSpacing: '-0.01em' }}
                   >
                     {step.title}
                   </h3>
 
-                  <p
-                    className="text-sm leading-relaxed mb-5"
-                    style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}
-                  >
+                  <p className="text-sm leading-relaxed mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                     {step.description}
                   </p>
 
@@ -1205,11 +1179,7 @@ function ProcessStepsSection() {
                       fill="none"
                     />
                     <circle r="3" fill="var(--amber)" filter={`url(#glow${index})`} opacity="0.8">
-                      <animateMotion
-                        dur="2s"
-                        repeatCount="indefinite"
-                        path="M0 12 L60 12"
-                      />
+                      <animateMotion dur="2s" repeatCount="indefinite" path="M0 12 L60 12" />
                     </circle>
                   </svg>
                 </div>
@@ -1219,15 +1189,13 @@ function ProcessStepsSection() {
         })}
       </div>
 
+      {/* Mobile vertical stack */}
       <div className="lg:hidden container-main" style={{ paddingBottom: '4rem' }}>
         <div className="flex flex-col gap-6 relative">
           <div
             className="absolute"
             style={{
-              left: '27px',
-              top: '0',
-              bottom: '0',
-              width: '2px',
+              left: '27px', top: '0', bottom: '0', width: '2px',
               background: 'linear-gradient(to bottom, rgba(212,168,83,0.3), rgba(212,168,83,0.1), rgba(212,168,83,0.3))',
             }}
           />
@@ -1248,10 +1216,7 @@ function ProcessStepsSection() {
                       boxShadow: '0 0 20px rgba(212,168,83,0.1)',
                     }}
                   >
-                    <span
-                      className="text-sm font-bold"
-                      style={{ color: 'var(--amber)', fontFamily: 'monospace' }}
-                    >
+                    <span className="text-sm font-bold" style={{ color: 'var(--amber)', fontFamily: 'monospace' }}>
                       {step.id}
                     </span>
                   </div>
@@ -1272,9 +1237,7 @@ function ProcessStepsSection() {
                     >
                       <Icon className="w-5 h-5" style={{ color: 'var(--amber)' }} strokeWidth={1.5} />
                     </div>
-                    <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      {step.title}
-                    </h3>
+                    <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>{step.title}</h3>
                   </div>
                   <p className="text-sm leading-relaxed mb-3" style={{ color: 'var(--text-secondary)' }}>
                     {step.description}
@@ -1297,10 +1260,7 @@ function ProcessStepsSection() {
       <div
         className="absolute pointer-events-none hidden lg:block"
         style={{
-          top: '10%',
-          left: '-10%',
-          width: '400px',
-          height: '400px',
+          top: '10%', left: '-10%', width: '400px', height: '400px',
           background: 'radial-gradient(circle, rgba(212,168,83,0.04) 0%, transparent 70%)',
           borderRadius: '50%',
         }}
@@ -1308,10 +1268,7 @@ function ProcessStepsSection() {
       <div
         className="absolute pointer-events-none hidden lg:block"
         style={{
-          bottom: '15%',
-          right: '-5%',
-          width: '350px',
-          height: '350px',
+          bottom: '15%', right: '-5%', width: '350px', height: '350px',
           background: 'radial-gradient(circle, rgba(212,168,83,0.03) 0%, transparent 70%)',
           borderRadius: '50%',
         }}
@@ -1320,7 +1277,8 @@ function ProcessStepsSection() {
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+// ─── FAQ Item ─────────────────────────────────────────────────────────────────
+
 function FAQItem({ faq, index }: { faq: (typeof faqs)[0]; index: number }) {
   const [isOpen, setIsOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -1334,16 +1292,8 @@ function FAQItem({ faq, index }: { faq: (typeof faqs)[0]; index: number }) {
         el,
         { opacity: 0, y: 24 },
         {
-          opacity: 1,
-          y: 0,
-          duration: 0.55,
-          ease: 'power2.out',
-          delay: index * 0.05,
-          scrollTrigger: {
-            trigger: el,
-            start: 'top 92%',
-            once: true,
-          },
+          opacity: 1, y: 0, duration: 0.55, ease: 'power2.out', delay: index * 0.05,
+          scrollTrigger: { trigger: el, start: 'top 92%', once: true },
         }
       );
     });
@@ -1358,10 +1308,7 @@ function FAQItem({ faq, index }: { faq: (typeof faqs)[0]; index: number }) {
       gsap.fromTo(el, { height: 0, opacity: 0 }, { height: 'auto', opacity: 1, duration: 0.35, ease: 'power2.out' });
     } else {
       gsap.to(el, {
-        height: 0,
-        opacity: 0,
-        duration: 0.28,
-        ease: 'power2.in',
+        height: 0, opacity: 0, duration: 0.28, ease: 'power2.in',
         onComplete: () => { el.style.display = 'none'; },
       });
     }
@@ -1388,10 +1335,7 @@ function FAQItem({ faq, index }: { faq: (typeof faqs)[0]; index: number }) {
             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
           }}
         >
-          <ChevronDown
-            className="w-4 h-4"
-            style={{ color: isOpen ? 'var(--bg)' : 'var(--text-secondary)' }}
-          />
+          <ChevronDown className="w-4 h-4" style={{ color: isOpen ? 'var(--bg)' : 'var(--text-secondary)' }} />
         </span>
       </button>
       <div ref={bodyRef} style={{ overflow: 'hidden', display: 'none' }}>
@@ -1404,69 +1348,42 @@ function FAQItem({ faq, index }: { faq: (typeof faqs)[0]; index: number }) {
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function HowItWorksPage() {
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      gsap.fromTo(
-        '.hiw-badge',
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', delay: 0.1 }
-      );
-      gsap.fromTo(
-        '.hiw-title',
-        { opacity: 0, y: 48, skewY: 1.5 },
-        { opacity: 1, y: 0, skewY: 0, duration: 0.95, ease: 'power3.out', delay: 0.2 }
-      );
-      gsap.fromTo(
-        '.hiw-subtitle',
-        { opacity: 0, y: 28 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power2.out', delay: 0.4 }
-      );
-      gsap.fromTo(
-        '.hiw-hero-btns',
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', delay: 0.55 }
-      );
+      gsap.fromTo('.hiw-badge', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', delay: 0.1 });
+      gsap.fromTo('.hiw-title', { opacity: 0, y: 48, skewY: 1.5 }, { opacity: 1, y: 0, skewY: 0, duration: 0.95, ease: 'power3.out', delay: 0.2 });
+      gsap.fromTo('.hiw-subtitle', { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power2.out', delay: 0.4 });
+      gsap.fromTo('.hiw-hero-btns', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', delay: 0.55 });
 
-      gsap.fromTo(
-        '.expect-card',
-        { opacity: 0, y: 36 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.65,
-          ease: 'power2.out',
-          stagger: 0.1,
-          scrollTrigger: { trigger: '.expect-section', start: 'top 85%', once: true },
-        }
-      );
+      // FIX: use Array.from so GSAP receives a proper array, not an HTMLCollection
+      const expectCards = Array.from(document.querySelectorAll('.expect-card')) as HTMLElement[];
+      if (expectCards.length > 0) {
+        gsap.fromTo(
+          expectCards,
+          { opacity: 0, y: 36 },
+          {
+            opacity: 1, y: 0, duration: 0.65, ease: 'power2.out', stagger: 0.1,
+            scrollTrigger: { trigger: '.expect-section', start: 'top 85%', once: true },
+          }
+        );
+      }
 
       gsap.utils.toArray<HTMLElement>('.section-header').forEach((el) => {
         gsap.fromTo(
           el,
           { opacity: 0, y: 30 },
-          {
-            opacity: 1,
-            y: 0,
-            duration: 0.7,
-            ease: 'power2.out',
-            scrollTrigger: { trigger: el, start: 'top 90%', once: true },
-          }
+          { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', scrollTrigger: { trigger: el, start: 'top 90%', once: true } }
         );
       });
 
       gsap.fromTo(
         '.cta-block',
         { opacity: 0, y: 60 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.9,
-          ease: 'power3.out',
-          scrollTrigger: { trigger: '.cta-block', start: 'top 84%', once: true },
-        }
+        { opacity: 1, y: 0, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: '.cta-block', start: 'top 84%', once: true } }
       );
     }, pageRef);
 
@@ -1478,10 +1395,7 @@ export default function HowItWorksPage() {
       <AmbientNetwork />
 
       {/* ─── Hero ─────────────────────────────────────────────────────────────── */}
-      <section
-        className="relative flex items-center justify-center text-center pt-24 pb-20"
-        style={{ minHeight: '78vh' }}
-      >
+      <section className="relative flex items-center justify-center text-center pt-24 pb-20" style={{ minHeight: '78vh' }}>
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212,168,83,0.07) 0%, transparent 70%)' }}
@@ -1497,15 +1411,10 @@ export default function HowItWorksPage() {
             }}
           >
             <span className="w-2 h-2 rounded-full animate-pulse-slow" style={{ backgroundColor: 'var(--amber)' }} />
-            <span className="text-label" style={{ color: 'var(--amber)' }}>
-              Global Vehicle Export Platform
-            </span>
+            <span className="text-label" style={{ color: 'var(--amber)' }}>Global Vehicle Export Platform</span>
           </div>
 
-          <h1
-            className="hiw-title text-display mx-auto mb-6"
-            style={{ maxWidth: '820px', color: 'var(--text-primary)', opacity: 0 }}
-          >
+          <h1 className="hiw-title text-display mx-auto mb-6" style={{ maxWidth: '820px', color: 'var(--text-primary)', opacity: 0 }}>
             How SHK Global Auction{' '}
             <span style={{ color: 'var(--amber)' }}>Works</span>
           </h1>
@@ -1521,11 +1430,7 @@ export default function HowItWorksPage() {
             <Link
               to="/inventory"
               className="inline-flex items-center gap-2 px-8 py-4 font-semibold rounded-lg transition-all duration-300 hover:-translate-y-0.5"
-              style={{
-                backgroundColor: 'var(--amber)',
-                color: 'var(--bg)',
-                boxShadow: '0 0 0 rgba(212,168,83,0)',
-              }}
+              style={{ backgroundColor: 'var(--amber)', color: 'var(--bg)', boxShadow: '0 0 0 rgba(212,168,83,0)' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = '0 0 32px rgba(212,168,83,0.32)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 rgba(212,168,83,0)'; }}
             >
@@ -1550,10 +1455,10 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      {/* ─── Awwwards-Quality Trust Indicators ────────────────────────────────── */}
+      {/* ─── Trust Indicators ─────────────────────────────────────────────────── */}
       <TrustIndicatorsSection />
 
-      {/* ─── AWWWARDS-QUALITY PROCESS STEPS SECTION ─────────────────────────────── */}
+      {/* ─── Process Steps ────────────────────────────────────────────────────── */}
       <ProcessStepsSection />
 
       {/* ─── What You Can Expect ──────────────────────────────────────────────── */}
@@ -1573,23 +1478,16 @@ export default function HowItWorksPage() {
           >
             <div className="lg:sticky lg:top-28 section-header" style={{ opacity: 0 }}>
               <span className="text-label block mb-4" style={{ color: 'var(--amber)' }}>Our Promise</span>
-              <h2 className="text-h2 mb-5" style={{ color: 'var(--text-primary)' }}>
-                What You Can Expect
-              </h2>
+              <h2 className="text-h2 mb-5" style={{ color: 'var(--text-primary)' }}>What You Can Expect</h2>
               <p className="leading-relaxed mb-8" style={{ color: 'var(--text-secondary)' }}>
                 We believe buying a vehicle internationally should feel as confident as buying locally. That's why we've
                 built a platform that prioritizes transparency, verification, and human support at every stage.
               </p>
 
-              <div
-                className="rounded-2xl p-6"
-                style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-              >
+              <div className="rounded-2xl p-6" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center gap-3 mb-3">
                   <MessageCircle className="w-5 h-5" style={{ color: 'var(--amber)' }} />
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    Need clarification?
-                  </span>
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>Need clarification?</span>
                 </div>
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                   Our export specialists are available across timezones to walk you through any step of the process.
@@ -1611,17 +1509,9 @@ export default function HowItWorksPage() {
                   <div
                     key={item.title}
                     className="expect-card flex gap-5 p-6 rounded-2xl transition-all duration-400"
-                    style={{
-                      backgroundColor: 'rgba(20,20,20,0.6)',
-                      border: '1px solid var(--border-subtle)',
-                      opacity: 0,
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface)';
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(20,20,20,0.6)';
-                    }}
+                    style={{ backgroundColor: 'rgba(20,20,20,0.6)', border: '1px solid var(--border-subtle)', opacity: 0 }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--surface)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(20,20,20,0.6)'; }}
                   >
                     <div
                       className="flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center"
@@ -1630,12 +1520,8 @@ export default function HowItWorksPage() {
                       <Icon className="w-5 h-5" style={{ color: 'var(--amber)' }} strokeWidth={1.5} />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                        {item.title}
-                      </h3>
-                      <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                        {item.description}
-                      </p>
+                      <h3 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>{item.title}</h3>
+                      <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{item.description}</p>
                     </div>
                   </div>
                 );
@@ -1646,16 +1532,11 @@ export default function HowItWorksPage() {
       </section>
 
       {/* ─── FAQ ──────────────────────────────────────────────────────────────── */}
-      <section
-        className="relative z-10"
-        style={{ padding: 'clamp(4rem,8vh,7rem) 0' }}
-      >
+      <section className="relative z-10" style={{ padding: 'clamp(4rem,8vh,7rem) 0' }}>
         <div className="container-main" style={{ maxWidth: '760px' }}>
           <div className="section-header text-center mb-12" style={{ opacity: 0 }}>
             <span className="text-label block mb-3" style={{ color: 'var(--amber)' }}>Support</span>
-            <h2 className="text-h2 mb-4" style={{ color: 'var(--text-primary)' }}>
-              Frequently Asked Questions
-            </h2>
+            <h2 className="text-h2 mb-4" style={{ color: 'var(--text-primary)' }}>Frequently Asked Questions</h2>
             <p style={{ color: 'var(--text-secondary)' }}>
               Everything you need to know about buying and exporting vehicles with SHK Global Auction.
             </p>
@@ -1673,10 +1554,7 @@ export default function HowItWorksPage() {
       </section>
 
       {/* ─── CTA ──────────────────────────────────────────────────────────────── */}
-      <section
-        className="relative z-10"
-        style={{ padding: 'clamp(2rem,4vh,3rem) 0 clamp(4rem,8vh,7rem)' }}
-      >
+      <section className="relative z-10" style={{ padding: 'clamp(2rem,4vh,3rem) 0 clamp(4rem,8vh,7rem)' }}>
         <div className="container-main">
           <div
             className="cta-block relative overflow-hidden rounded-3xl text-center p-8 md:p-16"
@@ -1710,10 +1588,7 @@ export default function HowItWorksPage() {
               >
                 Ready to Find Your Next Vehicle?
               </h2>
-              <p
-                className="mx-auto mb-10"
-                style={{ maxWidth: '480px', color: 'var(--text-secondary)', fontSize: '1.05rem' }}
-              >
+              <p className="mx-auto mb-10" style={{ maxWidth: '480px', color: 'var(--text-secondary)', fontSize: '1.05rem' }}>
                 Join 15,000+ buyers across 85 countries who trust SHK Global Auction for transparent, secure
                 international vehicle purchases.
               </p>

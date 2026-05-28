@@ -108,8 +108,6 @@ export default function Hero() {
   }, [paginate]);
 
   // Mouse parallax — 2D transforms only (compositor-only, no layout reflow).
-  // Removed rotateX/rotateY because 3D transforms create new compositing layers
-  // and trigger repaints that fight Lenis + ScrollTrigger on every frame.
   const applyParallax = useCallback(() => {
     const { x, y } = mouseDataRef.current;
 
@@ -161,7 +159,12 @@ export default function Hero() {
     const tl = gsap.timeline({
       defaults: { ease: 'power3.out' },
       onComplete: () => {
-        gsap.to(scrollIndicatorRef.current, { opacity: 1, duration: 1.2 });
+        // ✅ FIX: Guard against null — scrollIndicatorRef is only populated
+        // if the scroll indicator element exists in the JSX. Without this
+        // check, GSAP logs "target null not found" on every page load.
+        if (scrollIndicatorRef.current) {
+          gsap.to(scrollIndicatorRef.current, { opacity: 1, duration: 1.2 });
+        }
       },
     });
 
@@ -217,8 +220,6 @@ export default function Hero() {
     );
 
     // Scroll-driven parallax.
-    // scrub: 0.5 (was 1.5) — lower value means ScrollTrigger catches up faster,
-    // eliminating the 1-2 second lag that compounded with Lenis's own smoothing.
     gsap.to(textLayerRef.current, {
       y: -100,
       scrollTrigger: {
@@ -274,9 +275,7 @@ export default function Hero() {
 
       <div className="relative z-10 flex-1 flex flex-col justify-center pt-24 pb-8">
         <div className="container-main w-full">
-          {/* Text Layer — will-change: transform allows browser to promote to
-              its own compositor layer; omit transformStyle preserve-3d since
-              we no longer use 3D rotations here */}
+          {/* Text Layer */}
           <div
             ref={textLayerRef}
             className="text-center max-w-5xl mx-auto will-change-transform"
